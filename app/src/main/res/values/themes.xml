@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Always dark: deep navy, cyan and green. -->
+    <style name="AppTheme" parent="android:Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:windowBackground">@color/bg</item>
+        <item name="android:colorBackground">@color/bg</item>
+        <item name="android:statusBarColor">@color/bg</item>
+        <item name="android:navigationBarColor">@color/bg</item>
+        <item name="android:colorPrimary">@color/amber</item>
+        <item name="android:colorPrimaryDark">@color/bg</item>
+        <item name="android:colorAccent">@color/amber</item>
+        <item name="android:colorControlNormal">@color/sand</item>
+        <item name="android:colorControlActivated">@color/amber</item>
+        <item name="android:textColorPrimary">@color/cream</item>
+        <item name="android:textColorSecondary">@color/sand</item>
+        <item name="android:textColorHint">@color/sand</item>
+        <item name="android:textColorLink">@color/amber</item>
+        <item name="android:colorBackgroundFloating">@color/card</item>
+    </style>
+</resources>

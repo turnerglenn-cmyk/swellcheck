@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- "Mission control" theme. Keep in step with Palette in Draw.kt.
+         (Names kept from earlier themes so nothing else needs changing.) -->
+    <color name="bg">#04070D</color>
+    <color name="card">#0A1320</color>
+    <color name="cream">#E6F1FF</color>
+    <color name="sand">#7F9BB8</color>
+    <color name="amber">#4FD1E8</color>
+    <color name="brand">#4FD1E8</color>
+    <color name="brand_light">#4FD1E8</color>
+    <color name="ic_bg">#04070D</color>
+    <color name="ic_fg">#4FD1E8</color>
+</resources>

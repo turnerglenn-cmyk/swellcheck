@@ -1,0 +1,24 @@
+SwellCheck tells you at a glance whether it's worth heading to the water, for surfing or sea kayaking, right from your home screen.
+
+<b>What it shows</b>
+<ul>
+<li>A surf rating (Flat, Poor, Fair, Good, Epic) from swell height, swell period, swell direction and wind</li>
+<li>A paddling call (Go, Marginal, No go) based on limits you set yourself, with a warning for offshore wind</li>
+<li>Wind speed, gusts and direction; swell height, period and direction; total and wind-wave height</li>
+<li>Sea and air temperature, and approximate times of the next high and low water</li>
+<li>A 3-day outlook, and a home-screen widget with the next 12 hours</li>
+</ul>
+
+<b>Private by design</b>
+<ul>
+<li>No ads, no analytics, no trackers, no account</li>
+<li>No Google services needed</li>
+<li>Your location is rounded to about 1 km and only sent to Open-Meteo to fetch the forecast</li>
+<li>Settings and saved places stay on your phone</li>
+</ul>
+
+Use your phone's location or search for any beach or town. Tell SwellCheck which way the beach faces and it will spot offshore winds and swell that won't reach the beach.
+
+Forecasts are computer models and can be wrong, especially near the coast. Tide times are approximate and not for navigation. Always check an official forecast and use your own judgement.
+
+Weather and marine data by Open-Meteo.com, licensed CC BY 4.0.

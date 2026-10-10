@@ -1,0 +1,27 @@
+# Draft for fdroiddata: metadata/io.github.swellcheck.yml
+# Replace YOUR_NAME, and the app id if you change it.
+Categories:
+  - Sports & Health
+License: GPL-3.0-or-later
+AuthorName: YOUR_NAME
+SourceCode: https://github.com/YOUR_NAME/swellcheck
+IssueTracker: https://github.com/YOUR_NAME/swellcheck/issues
+Liberapay: YOUR_NAME
+
+AutoName: SwellCheck
+
+RepoType: git
+Repo: https://github.com/YOUR_NAME/swellcheck.git
+
+Builds:
+  - versionName: 0.1.0
+    versionCode: 1
+    commit: v0.1.0
+    subdir: app
+    gradle:
+      - yes
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags
+CurrentVersion: 0.1.0
+CurrentVersionCode: 1
