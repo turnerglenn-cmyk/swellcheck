@@ -5,6 +5,6 @@
     <string name="widget_name">SwellCheck conditions</string>
     <string name="widget_description">Surf and paddling conditions where you are</string>
     <!-- Your Liberapay / Ko-fi link for the "Buy me a coffee" button. Same link for all your apps. -->
-    <string name="donate_url">https://liberapay.com/YOUR_NAME</string>
-    <string name="source_url">https://github.com/YOUR_NAME/swellcheck</string>
+    <string name="donate_url">https://liberapay.com/Glenn_Turner/</string>
+    <string name="source_url">https://github.com/turnerglenn-cmyk/swellcheck</string>
 </resources>

@@ -8,6 +8,8 @@ A private surf and sea-kayak forecast for Android, with a home-screen widget.
 - 3-day outlook, plus a widget showing now and the next 12 hours
 - No ads, no analytics, no account, no Google services. Location is rounded to ~1 km and only sent to Open-Meteo.
 
+If SwellCheck is useful to you, you can [buy me a coffee on Liberapay](https://liberapay.com/Glenn_Turner/).
+
 Licence: GPL-3.0-or-later. Data: [Open-Meteo](https://open-meteo.com/), CC BY 4.0.
 
 ## Building it (Linux Mint)
@@ -28,8 +30,8 @@ The code uses no third-party libraries: just Android itself and Kotlin.
 
 ## Before you publish
 
-- Put your donation link in `app/src/main/res/values/strings.xml` (`donate_url`).
-  Liberapay suits F-Droid users best; Ko-fi or GitHub Sponsors also work.
+- Donations: the "Buy me a coffee" button opens https://liberapay.com/Glenn_Turner/
+  (set in `app/src/main/res/values/strings.xml`, `donate_url`). Same link for all apps.
 - Put your repository link in `source_url` in the same file.
 - Consider changing the app ID `io.github.swellcheck` (in `app/build.gradle.kts` and the
   `namespace`) to `io.github.<your-github-name>.swellcheck`. Do it **before** the first release;
@@ -45,7 +47,7 @@ Create a public repository, push this folder, then tag the release:
 
 ```
 git init && git add . && git commit -m "SwellCheck 0.1.0"
-git remote add origin https://github.com/YOUR_NAME/swellcheck.git
+git remote add origin https://github.com/turnerglenn-cmyk/swellcheck.git
 git push -u origin main
 git tag v0.1.0 && git push --tags
 ```
