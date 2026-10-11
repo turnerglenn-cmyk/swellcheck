@@ -1,11 +1,11 @@
-# Draft for fdroiddata: metadata/io.github.swellcheck.yml
-# Ready to submit to fdroiddata as metadata/io.github.swellcheck.yml
+# For fdroiddata: metadata/io.github.swellcheck.yml
 Categories:
   - Sports & Health
 License: GPL-3.0-or-later
 AuthorName: Glenn Turner
 SourceCode: https://github.com/turnerglenn-cmyk/swellcheck
 IssueTracker: https://github.com/turnerglenn-cmyk/swellcheck/issues
+Changelog: https://github.com/turnerglenn-cmyk/swellcheck/releases
 Liberapay: Glenn_Turner
 
 AutoName: SwellCheck

@@ -335,7 +335,7 @@ object Draw {
             // Only label a day if it fits before the next one starts (e.g. late evening).
             if (room >= dayW + 10f * d) c.drawText(label, x + 4f * d, 13f * d, dayP)
             // Repeat the chart's name at each day so it's visible wherever you've scrolled to.
-            if (room >= dayW + titleP.measureText(title) + 20f * d) c.drawText(title, x + 10f * d + dayW, 13f * d, titleP)
+            if (room >= dayW + titleP.measureText(title) + 22f * d) c.drawText(title, x + 12f * d + dayW, 13f * d, titleP)
         }
         val top = 18f * d
         val stripH = 11f * d

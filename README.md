@@ -20,6 +20,10 @@ Download the latest `app-release.apk` from
 (allow "install unknown apps" for your browser or file manager when asked).
 IzzyOnDroid and F-Droid listings are on the way.
 
+**Automatic updates with [Obtainium](https://obtainium.imranr.dev/):** tap *Add app*, paste
+`https://github.com/turnerglenn-cmyk/swellcheck` and Obtainium will install each new release
+straight from GitHub.
+
 Then long-press your home screen → Widgets → SwellCheck to add the widget.
 
 ## Building it yourself (Linux Mint)
@@ -56,7 +60,7 @@ The code uses no third-party libraries: just Android itself and Kotlin.
 1. **Bump the version** in `app/build.gradle.kts`: `versionCode` +1 and a new `versionName`
    (e.g. 3 / 0.2.1 → 4 / 0.2.2). Update the same two numbers, the `commit: v…` tag and
    `CurrentVersion`/`CurrentVersionCode` in `fdroid-metadata-draft.yml`.
-2. **Write the changelog**: `fastlane/metadata/android/en-GB/changelogs/<versionCode>.txt`,
+2. **Write the changelog**: `fastlane/metadata/android/en-US/changelogs/<versionCode>.txt`,
    one or two plain lines (under 500 characters).
 3. **Build the signed APK**: **Build → Generate Signed App Bundle / APK → APK** (not *App Bundle*:
    an `.aab` is only for Google Play) → **Choose existing…** keystore → passwords → **release** →
@@ -75,7 +79,7 @@ The code uses no third-party libraries: just Android itself and Kotlin.
    git tag v0.2.2 && git push --tags
    gh release create v0.2.2 app/release/app-release.apk \
      --title "SwellCheck 0.2.2" \
-     --notes-file fastlane/metadata/android/en-GB/changelogs/4.txt
+     --notes-file fastlane/metadata/android/en-US/changelogs/4.txt
    ```
 6. IzzyOnDroid and F-Droid pick up the new tag automatically once the app is listed there.
 
