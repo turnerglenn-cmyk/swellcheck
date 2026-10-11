@@ -1,4 +1,0 @@
-New look: dark blue "mission control" theme with softer fonts.
-Separate sea and wind charts; tide on a true-to-scale curve with range at each low water; swell direction arrows.
-Tide strength (springs/neaps) and moon phase, worked out on your phone.
-Automatic refresh (pull down to refresh now). Redesigned Settings with an About section.

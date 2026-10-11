@@ -1,1 +1,0 @@
-First release: surf and paddling ratings, 3-day forecast, approximate tides and a home-screen widget.

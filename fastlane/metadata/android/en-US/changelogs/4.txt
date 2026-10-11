@@ -1,0 +1,1 @@
+Store listing: screenshots and icon. Tidier chart labels. Verified Gradle download.

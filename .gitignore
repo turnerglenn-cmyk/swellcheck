@@ -8,3 +8,6 @@ local.properties
 captures/
 *.keystore
 *.jks
+app/release/
+*.apk
+*.aab
