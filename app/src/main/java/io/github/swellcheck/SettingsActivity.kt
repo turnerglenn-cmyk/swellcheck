@@ -188,6 +188,9 @@ class SettingsActivity : Activity() {
             setTextColor(pal.subtle); setPadding(0, Ui.dp(this@SettingsActivity, 8), 0, 0)
         })
         about.addView(Ui.button(this, "Source code", filled = false) { openUrl(getString(R.string.source_url)) }, full(top = 10))
+        about.addView(aboutText(
+            "SwellCheck is free and always will be. If it's useful to you, you can chip in towards a coffee."))
+        about.addView(Ui.button(this, "☕  Buy me a coffee") { openUrl(getString(R.string.donate_url)) }, full(top = 10))
         root.addView(about)
 
         Ui.applySystemBarPadding(this, scroll)

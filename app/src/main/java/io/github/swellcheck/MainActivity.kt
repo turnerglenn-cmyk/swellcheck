@@ -266,16 +266,9 @@ class MainActivity : Activity() {
         val box = Ui.column(this)
         box.setPadding(0, Ui.dp(this, 20), 0, 0)
 
-        // Settings and donate side by side, equal width.
-        val buttons = Ui.row(this)
-        val settings = Ui.button(this, "⚙  Settings", filled = false) {
+        val buttons = Ui.button(this, "⚙  Settings", filled = false) {
             startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
         }
-        val beer = Ui.button(this, "☕  Buy me a coffee") { openUrl(getString(R.string.donate_url)) }
-        buttons.addView(settings, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-        buttons.addView(beer, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-            leftMargin = Ui.dp(this@MainActivity, 10)
-        })
         box.addView(buttons)
         return box
     }
