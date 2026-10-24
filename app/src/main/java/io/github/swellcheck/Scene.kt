@@ -83,7 +83,8 @@ data class SceneInput(
             if (f.hasSea && wave > 0.2) {
                 val b = Surfzone.breaker(max(wave, (now.windWaveM ?: 0.0) * 0.5), period, tide)
                 val far = (kotlin.math.round(b.distanceM / 10.0) * 10).toInt()
-                subs += "Waves ${b.type.words}, breaking about $far m out at this tide"
+                subs += if (far < 10) "Waves ${b.type.words}, breaking right at the water's edge at this tide"
+                    else "Waves ${b.type.words}, breaking about $far m out at this tide"
             }
             Tide.summary(f.hours, nowSec)?.let { subs += "Tide " + it.replaceFirstChar { c -> c.lowercase() } + " · " + Moon.tideLabel(springs).lowercase() }
             subs += weatherWords(code, cloud, rain) + (now.seaTempC?.let { " · sea ${Fmt.temp(it)}" } ?: "") +
@@ -2490,11 +2491,22 @@ object SceneArt {
     private fun weather(c: Canvas, v: View3, d: Float, t: Float, s: SceneInput, wind: WindView, fog: Double, flash: Boolean) {
         // Fog: layers of haze thickest towards the horizon
         if (fog > 0.02) {
+            // a smooth haze, thickest at the horizon, fading out into the scene's sky above and
+            // over the sea and beach below (thin bands with no overlap, so no lines show)
             val hz = p(0)
-            for (i in 0 until 10) {
-                val y0 = v.horizon - (v.horizon - v.top) * 0.35f + (v.bottom - v.horizon) * i / 10f
-                hz.color = alpha(0xFFDDE3E8.toInt(), fog * 0.55 * (1 - i / 11.0))
-                c.drawRect(0f, y0, v.w, y0 + (v.bottom - v.horizon) / 10f + 1f, hz)
+            val up = (v.horizon - v.skyTop) * 0.45f
+            val down = (v.bottom - v.horizon) + 2f
+            val top = v.horizon - up; val n = 60
+            val col = mix(0xFFDDE3E8.toInt(), 0xFF39424E.toInt(), 0.0)
+            var yPrev = kotlin.math.floor(top)
+            for (i in 1..n) {
+                val f = i / n.toFloat()
+                val y = kotlin.math.floor(top + (up + down) * f)
+                val mid = top + (up + down) * (f - 0.5f / n)
+                val k = if (mid < v.horizon) smooth(1.0 - ((v.horizon - mid) / up).toDouble()) else 1 - smooth(((mid - v.horizon) / down).toDouble()) * 0.7
+                hz.color = alpha(col, fog * 0.6 * k)
+                if (y > yPrev) c.drawRect(0f, yPrev, v.w, y, hz)
+                yPrev = y
             }
         }
         val snow = s.code in 71..77 || s.code in 85..86
