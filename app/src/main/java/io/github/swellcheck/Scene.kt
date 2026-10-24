@@ -712,9 +712,7 @@ object SceneArt {
             }
         }
 
-        // Wave gauge: a striped post in the water. Waves climb it to their real height.
-        gauge(c, v, d, t, s, zs, sw, day)
-        // Buoy: bobs with the swell, tag = sea temperature.
+        // Buoy: bobs with the swell a mile out.
         buoy(c, v, d, t, s, zs, sw, day)
         // Kayak and surfer
         boats(c, v, d, t, s, zs, sw, day, onSand = false)
@@ -1130,7 +1128,7 @@ object SceneArt {
      * starts and finishes with the boats at their spots just beyond the break, so one
      * flows into the next; and segments start on a wave so the surfing lines up with the swell.
      */
-    private fun kayakPlan(t: Double, tv: Double, surfable: Boolean, daySeed: Int): Seg {
+    private fun kayakPlan(t: Double, tv: Double, surfable: Boolean, daySeed: Int, surfUp: Boolean = false, surfOnly: Boolean = false): Seg {
         var start = 0.0
         var prev: Act? = null
         var n = 0
@@ -1138,13 +1136,16 @@ object SceneArt {
             fun r(j: Int) = hash(daySeed * 7919 + n * 131 + j * 17)
             var act = if (n == 0) (if (surfable) Act.SURF else Act.CRUISE) else {
                 val x = r(1)
-                if (surfable) when {
+                if (surfOnly) Act.SURF                          // they've come out for the surf and nothing else
+                else if (surfable && surfUp) when {             // a go day with real surf: mostly surfing
+                    x < 0.65 -> Act.SURF; x < 0.72 -> Act.TRIP; x < 0.84 -> Act.CRUISE; x < 0.93 -> Act.RAFT; else -> Act.ROLL
+                } else if (surfable) when {
                     x < 0.40 -> Act.SURF; x < 0.52 -> Act.TRIP; x < 0.72 -> Act.CRUISE; x < 0.86 -> Act.RAFT; else -> Act.ROLL
                 } else when {
                     x < 0.25 -> Act.TRIP; x < 0.62 -> Act.CRUISE; x < 0.82 -> Act.RAFT; else -> Act.ROLL
                 }
             }
-            if (act == prev) act = if (act == Act.SURF) Act.CRUISE else if (surfable) Act.SURF else Act.RAFT
+            if (act == prev && !surfOnly) act = if (act == Act.SURF) Act.CRUISE else if (surfable) Act.SURF else Act.RAFT
             val secs = when (act) {
                 Act.SURF -> 100.0 + 140.0 * r(2)
                 Act.TRIP -> 90.0 + 150.0 * r(2)
@@ -1181,7 +1182,8 @@ object SceneArt {
      * Boats sitting an activity out wait at their spot, some drifting, some pottering in circles.
      * Everything is kept inside the visible part of the view, whatever shape the screen is.
      */
-    private fun kayakGroup(c: Canvas, v: View3, d: Float, t: Float, s: SceneInput, zs: Double, sw: Swell, day: Double) {
+    private fun kayakGroup(c: Canvas, v: View3, d: Float, t: Float, s: SceneInput, zs: Double, sw: Swell, day: Double,
+                           surfUp: Boolean = false, surfOnly: Boolean = false) {
         val breakDepth = sw.breakXMean * 1.3                // where the bigger set waves break
         val surfable = sw.h >= 0.4 && s.periodS >= 5.0      // nobody surfs short wind chop
         val gaps = max(1.0, kotlin.math.round(sw.sAt(max(18.0, breakDepth + 8)) / sw.lambda))
@@ -1190,7 +1192,7 @@ object SceneArt {
         val halfW = (v.w / 2.0) / v.f * zL * 0.85           // half the visible width out there, metres
         val home = doubleArrayOf(-0.5 * halfW, 0.05 * halfW, 0.55 * halfW)
         val daySeed = (s.moonPhase * 1000).toInt()          // changes from day to day
-        val seg = kayakPlan(t.toDouble(), sw.tv, surfable, daySeed)
+        val seg = kayakPlan(t.toDouble(), sw.tv, surfable, daySeed, surfUp, surfOnly && surfable)
         val tl = t - seg.start                              // time into this activity
         val u = (tl / seg.len).coerceIn(0.0, 1.0)
         val speed = sw.speed
@@ -1574,9 +1576,13 @@ object SceneArt {
     }
 
     private fun boats(c: Canvas, v: View3, d: Float, t: Float, s: SceneInput, zs: Double, sw: Swell, day: Double, onSand: Boolean) {
-        // Kayak: what it's doing = the paddle call
-        when (s.paddle) {
-            Paddle.GO -> if (!onSand) kayakGroup(c, v, d, t, s, zs, sw, day)
+        // Kayaks: what they're doing = the paddle call, except that sea kayakers go out and surf
+        // whenever the surf is up (the surf rating is already poor if it's too windy)
+        val surfUp = (s.surf == Surf.FAIR || s.surf == Surf.GOOD || s.surf == Surf.EPIC) && s.periodS >= 5.0 && sw.h >= 0.4
+        if (surfUp && s.paddle != Paddle.GO) {
+            if (!onSand) kayakGroup(c, v, d, t, s, zs, sw, day, surfUp = true, surfOnly = true)
+        } else when (s.paddle) {
+            Paddle.GO -> if (!onSand) kayakGroup(c, v, d, t, s, zs, sw, day, surfUp = surfUp)
             Paddle.MARGINAL -> if (!onSand) {
                 // Stays close in, paddling up and down the beach
                 val p = 2 * PI * t / 50.0
@@ -2309,10 +2315,6 @@ object SceneArt {
         }
         // The beach's name written in the sand
         nameInSand(c, v, d, s, day)
-        // Tide sign: next high or low and an arrow for rising/falling
-        sign(c, v, d, t, s, day, wall)
-        // Flagpole: windsock on top, paddle flag below
-        pole(c, v, d, t, s, wind, day)
         boats(c, v, d, t, s, zs, Swell(s, zs), day, onSand = true)
     }
 

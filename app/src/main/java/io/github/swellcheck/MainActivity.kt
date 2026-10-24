@@ -322,10 +322,9 @@ class MainActivity : Activity() {
     }
 
     private fun sceneKey() = listOf(
-        "Waves: angle = swell direction; they come in sets every swell period, in real time, slow and steepen in the shallows and break where it gets too shallow: bigger waves further out. Wide spilling surf at low tide, closer and more plunging higher up; long-period swell plunges. The striped post shows it in ${if (prefs.units.feet) "feet" else "half metres"}.",
-        "Water's edge: the tide. The weed line is high water; the sign gives the next turn.",
-        "Windsock: where the wind is going and how strong. Beach flag: your paddle call.",
-        "Kayaks: on a go day a yellow, blue and red sea kayak make their own fun: surfing the swell out past the break, cruising the coast, heading off out of sight, rafting up for a chat or practising rolls. One alone close in = marginal, upside down on the sand = no go.",
+        "Waves: angle = swell direction; they come in sets every swell period, in real time, slow and steepen in the shallows and break where it gets too shallow: bigger waves further out. Wide spilling surf at low tide, closer and more plunging higher up; long-period swell plunges.",
+        "Water's edge: the tide. The weed line is high water.",
+        "Kayaks: on a go day a yellow, blue and red sea kayak make their own fun: surfing the swell out past the break, cruising the coast, heading off out of sight, rafting up for a chat or practising rolls. Whenever the surf is up they're out surfing it, even if it's too big for a paddling trip. Otherwise one alone close in = marginal, upside down on the sand = no go.",
         "Surfer: sits at the peak just outside the break and rides across the face; good surf = more and longer rides, fair = long waits. Board in the sand = poor or flat.",
         "Sun and moon are where they really are; the moon's shape shows springs or neaps.",
         "Clouds, rain, fog and lightning follow the forecast. The buoy bobs a mile out. Gulls sit it out in a gale.",
