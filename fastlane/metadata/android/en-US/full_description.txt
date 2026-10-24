@@ -7,7 +7,9 @@ SwellCheck tells you at a glance whether it's worth heading to the water, for su
 <li>Wind speed, gusts and direction; swell height, period and direction; total and wind-wave height</li>
 <li>Sea and air temperature, high and low water times, and today's tide range</li>
 <li>Spring/neap tide strength worked out from the moon phase, so you can see when tides run hardest</li>
-<li>A 3-day outlook, and a home-screen widget with the next 12 hours</li>
+<li>A 3-day outlook with night and day shaded from the real sunrise and sunset, and a home-screen widget</li>
+<li>The best time to go over the next three days, and the reason in plain English</li>
+<li>12 colour themes (including two light themes for bright sun and a red night-vision theme) and 4 layouts</li>
 </ul>
 
 <b>Private by design</b>

@@ -32,7 +32,7 @@ class SettingsActivity : Activity() {
     // A place picked from search but not saved yet.
     private var pending: Place? = null
 
-    private val pal = Palette()
+    private val pal: Palette get() = Themes.current
     private val tint by lazy {
         ColorStateList(
             arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
@@ -43,6 +43,8 @@ class SettingsActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = Prefs(this)
+        Themes.load(this)
+        Ui.themeWindow(this)
 
         val scroll = ScrollView(this).apply { clipToPadding = false }
         val root = Ui.column(this)
@@ -53,6 +55,10 @@ class SettingsActivity : Activity() {
         root.addView(Ui.text(this, "Saved on this phone only", 12f).apply {
             gravity = Gravity.CENTER; setTextColor(pal.accent)
         }, full())
+
+        // --- Look: colour theme and screen layout (both apply straight away)
+        root.addView(themeCard())
+        root.addView(layoutCard())
 
         // --- Location
         val loc = Ui.card(this)
@@ -197,6 +203,113 @@ class SettingsActivity : Activity() {
         setContentView(scroll)
     }
 
+    // ---- theme and layout pickers ---------------------------------------
+
+    private fun themeCard(): LinearLayout {
+        val card = Ui.card(this)
+        card.addView(Ui.label(this, "Theme"))
+        card.addView(Ui.text(this, "Tap to try one. It changes straight away.", 13f).apply { setTextColor(pal.subtle) })
+        val perRow = 3
+        Themes.all.chunked(perRow).forEach { chunk ->
+            val row = Ui.row(this)
+            chunk.forEachIndexed { i, theme ->
+                val swatch = themeSwatch(theme, theme.id == prefs.theme)
+                row.addView(swatch, LinearLayout.LayoutParams(0, Ui.dp(this, 78), 1f).apply {
+                    if (i > 0) leftMargin = Ui.dp(this@SettingsActivity, 8)
+                })
+            }
+            // Keep the last row's tiles the same width as the others.
+            repeat(perRow - chunk.size) {
+                row.addView(android.view.View(this), LinearLayout.LayoutParams(0, 1, 1f).apply { leftMargin = Ui.dp(this@SettingsActivity, 8) })
+            }
+            card.addView(row, full(top = 8))
+        }
+        return card
+    }
+
+    private fun themeSwatch(theme: Theme, selected: Boolean): LinearLayout {
+        val t = theme.pal
+        val box = Ui.column(this).apply {
+            setPadding(Ui.dp(this@SettingsActivity, 10), Ui.dp(this@SettingsActivity, 10), Ui.dp(this@SettingsActivity, 8), Ui.dp(this@SettingsActivity, 8))
+            background = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = Ui.dp(this@SettingsActivity, 14).toFloat()
+                setColor(t.bg)
+                if (selected) setStroke(Ui.dp(this@SettingsActivity, 3), pal.accent)
+                else setStroke(Ui.dp(this@SettingsActivity, 1), t.ring)
+            }
+            isClickable = true
+            contentDescription = theme.name + if (selected) ", selected" else ""
+            setOnClickListener {
+                if (prefs.theme != theme.id) {
+                    prefs.theme = theme.id
+                    ConditionsWidget.updateAll(applicationContext)
+                    recreate()
+                }
+            }
+        }
+        val dots = Ui.row(this)
+        for (col in listOf(t.accent, t.wind, t.swell)) {
+            dots.addView(android.view.View(this).apply {
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    shape = android.graphics.drawable.GradientDrawable.OVAL
+                    setColor(col)
+                }
+            }, LinearLayout.LayoutParams(Ui.dp(this, 14), Ui.dp(this, 14)).apply { rightMargin = Ui.dp(this@SettingsActivity, 4) })
+        }
+        box.addView(dots)
+        box.addView(Ui.text(this, theme.name, 12.5f, bold = true).apply {
+            setTextColor(t.text)
+            maxLines = 2
+        }, full(top = 6))
+        return box
+    }
+
+    private fun layoutCard(): LinearLayout {
+        val card = Ui.card(this)
+        card.addView(Ui.label(this, "Main screen layout"))
+        val options = mutableListOf<LinearLayout>()
+        fun paint(selected: ScreenLayout) {
+            ScreenLayout.values().forEachIndexed { i, l ->
+                options[i].background = android.graphics.drawable.GradientDrawable().apply {
+                    cornerRadius = Ui.dp(this@SettingsActivity, 12).toFloat()
+                    setColor(if (l == selected) Draw.mix(pal.card, pal.accent, 0.16f) else pal.bg)
+                    setStroke(Ui.dp(this@SettingsActivity, if (l == selected) 2 else 1), if (l == selected) pal.accent else pal.ring)
+                }
+                options[i].contentDescription = l.title + if (l == selected) ", selected" else ""
+            }
+        }
+        ScreenLayout.values().forEach { l ->
+            val opt = Ui.column(this).apply {
+                setPadding(Ui.dp(this@SettingsActivity, 14), Ui.dp(this@SettingsActivity, 10), Ui.dp(this@SettingsActivity, 14), Ui.dp(this@SettingsActivity, 10))
+                isClickable = true
+                addView(Ui.text(this@SettingsActivity, l.title, 15f, bold = true))
+                addView(Ui.text(this@SettingsActivity, l.blurb, 13f).apply { setTextColor(pal.subtle) })
+                setOnClickListener {
+                    prefs.layout = l
+                    paint(l)
+                }
+            }
+            options += opt
+            card.addView(opt, full(top = 8))
+        }
+        paint(prefs.layout)
+        val on = SceneWallpaper.isActive(this)
+        card.addView(Ui.text(this, "Live wallpaper", 15f, bold = true), full(top = 14))
+        card.addView(Ui.text(this,
+            if (on) "The live scene is your phone wallpaper. It updates by itself as conditions change."
+            else "Use the live scene as your phone's background, whatever layout you pick here. It moves only while your home screen is showing and updates by itself as conditions change.",
+            13f).apply { setTextColor(pal.subtle) }, full(top = 4))
+        card.addView(Ui.button(this, if (on) "Change wallpaper" else "Set as phone wallpaper", filled = !on) {
+            SceneWallpaper.offer(this)
+        }, full(top = 8))
+        return card
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        SceneWallpaper.onResult(this, requestCode, resultCode)
+    }
+
     // ---- small builders -------------------------------------------------
 
     private fun full(top: Int = 0) = LinearLayout.LayoutParams(
@@ -213,7 +326,13 @@ class SettingsActivity : Activity() {
     }
 
     private fun dropdown(items: List<String>) = Spinner(this).apply {
-        adapter = ArrayAdapter(this@SettingsActivity, android.R.layout.simple_spinner_dropdown_item, items)
+        // Colour the text ourselves: the system default is light text, unreadable on the light themes.
+        adapter = object : ArrayAdapter<String>(this@SettingsActivity, android.R.layout.simple_spinner_dropdown_item, items) {
+            override fun getView(position: Int, convertView: android.view.View?, parent: android.view.ViewGroup): android.view.View =
+                super.getView(position, convertView, parent).also { (it as? TextView)?.setTextColor(pal.text) }
+            override fun getDropDownView(position: Int, convertView: android.view.View?, parent: android.view.ViewGroup): android.view.View =
+                super.getDropDownView(position, convertView, parent).also { (it as? TextView)?.setTextColor(pal.text) }
+        }
         Ui.styleField(this)
         setPopupBackgroundDrawable(Ui.fieldBackground(this@SettingsActivity).apply { setColor(pal.card) })
     }

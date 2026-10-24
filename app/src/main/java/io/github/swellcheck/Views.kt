@@ -28,7 +28,7 @@ class NowView(context: Context) : View(context) {
         super.onDraw(canvas)
         val h = hour ?: return
         val d = d
-        val pal = Palette()
+        val pal = Themes.current
         val w = width.toFloat()
         val gap = 10f * d
 
@@ -36,8 +36,9 @@ class NowView(context: Context) : View(context) {
         val surf = Rating.surf(h, facing).rating
         val paddle = Rating.paddle(h, facing, limits).rating
         val tileH = 70f * d
-        Draw.tile(canvas, RectF(0f, 0f, w / 2f - gap / 2f, tileH), "SURF", surf.label, surf.color, d, pal)
-        Draw.tile(canvas, RectF(w / 2f + gap / 2f, 0f, w, tileH), "PADDLE", paddle.label, paddle.color, d, pal)
+        // Paddle call on the left, surf on the right
+        Draw.tile(canvas, RectF(0f, 0f, w / 2f - gap / 2f, tileH), "PADDLE", paddle.label, paddle.color, d, pal)
+        Draw.tile(canvas, RectF(w / 2f + gap / 2f, 0f, w, tileH), "SURF", surf.label, surf.color, d, pal)
 
         // Dials
         val title = Draw.paint(pal.subtle, 11f * d, bold = true)
@@ -70,9 +71,12 @@ class ForecastChartView(context: Context, private val sea: Boolean) : View(conte
     private var facing: Int? = null
     private var limits = Limits(15.0, 22.0, 1.2)
     private var units = Units(WindUnit.MPH, true)
+    private var lat: Double? = null
+    private var lon: Double? = null
 
-    fun set(hours: List<Hour>, facing: Int?, limits: Limits, units: Units) {
+    fun set(hours: List<Hour>, facing: Int?, limits: Limits, units: Units, lat: Double?, lon: Double?) {
         this.hours = hours; this.facing = facing; this.limits = limits; this.units = units
+        this.lat = lat; this.lon = lon
         requestLayout()
         invalidate()
     }
@@ -87,7 +91,7 @@ class ForecastChartView(context: Context, private val sea: Boolean) : View(conte
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val now = System.currentTimeMillis() / 1000
-        if (sea) Draw.seaChart(canvas, width.toFloat(), height.toFloat(), hours, facing, units, d, Palette(), now)
-        else Draw.windChart(canvas, width.toFloat(), height.toFloat(), hours, facing, limits, units, d, Palette(), now)
+        if (sea) Draw.seaChart(canvas, width.toFloat(), height.toFloat(), hours, facing, units, d, Themes.current, now, lat, lon)
+        else Draw.windChart(canvas, width.toFloat(), height.toFloat(), hours, facing, limits, units, d, Themes.current, now, lat, lon)
     }
 }

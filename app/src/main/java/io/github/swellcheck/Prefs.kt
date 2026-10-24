@@ -55,6 +55,16 @@ class Prefs(context: Context) {
         set(v) = putD("max_wave", v)
 
     val limits: Limits get() = Limits(maxWind, maxGust, maxWave)
+
+    /** Colour theme id (see Themes). */
+    var theme: String
+        get() = sp.getString("theme", null) ?: Themes.DEFAULT
+        set(v) = sp.edit().putString("theme", v).apply()
+
+    /** How the main screen is laid out. */
+    var layout: ScreenLayout
+        get() = runCatching { ScreenLayout.valueOf(sp.getString("layout", null) ?: "CLASSIC") }.getOrDefault(ScreenLayout.CLASSIC)
+        set(v) = sp.edit().putString("layout", v.name).apply()
     val facingOrNull: Int? get() = beachFacing.takeIf { it in 0..359 }
 
     // ---- cached forecast -------------------------------------------------

@@ -5,7 +5,9 @@ A private surf and sea-kayak forecast for Android, with a home-screen widget.
 - Surf rating (Flat → Epic) from swell height, period, direction and wind
 - Paddling call (Go / Marginal / No go) against your own limits, with an offshore-wind warning
 - Wind, gusts, swell, waves, sea temperature and approximate tide times
-- 3-day outlook, plus a widget showing now and the next 12 hours
+- 3-day outlook with night and day shaded from the real sunrise and sunset, plus a home-screen widget
+- "Best time to go" for the next three days, with the reason in plain English
+- 12 colour themes (two light ones for bright sun, a red one for night vision) and 4 layouts: Classic, Verdict first, Hour by hour, Tiles
 - No ads, no analytics, no account, no Google services. Location is rounded to ~1 km and only sent to Open-Meteo.
 
 If SwellCheck is useful to you, you can [buy me a coffee on Liberapay](https://liberapay.com/Glenn_Turner/)

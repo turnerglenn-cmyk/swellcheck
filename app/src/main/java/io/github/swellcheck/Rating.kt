@@ -29,6 +29,8 @@ enum class WindKind { OFFSHORE, CROSS, ONSHORE }
  * Not a safety system: it only summarises a model forecast.
  */
 object Rating {
+    /** Your paddling wind limits, set when a screen, widget or wallpaper loads the settings. Too windy to paddle = too windy to surf. */
+    @Volatile var windLimits: Limits? = null
 
     /** Smallest angle between two bearings, 0..180. */
     fun angDiff(a: Double, b: Double): Double {
@@ -54,6 +56,13 @@ object Rating {
         val notes = mutableListOf<String>()
 
         if (height < 0.3) return SurfResult(Surf.FLAT, listOf("Less than 0.3 m of swell"))
+        windLimits?.let { lim ->
+            val w = h.windKn; val g = h.gustKn
+            if ((w != null && w > lim.maxWind) || (g != null && g > lim.maxGust))
+                return SurfResult(Surf.POOR, listOf("Too windy: over your wind limits"))
+        }
+        // Under about 5 s it's wind chop: it closes out and has no push. Nobody surfs it.
+        if (period in 0.1..4.99) return SurfResult(Surf.POOR, listOf("Under 5 s period: wind chop, not surfable"))
 
         var s = when {
             height < 0.6 -> 1.0
@@ -109,11 +118,17 @@ object Rating {
         }
         if (facing == null) notes += "Set the beach direction in Settings for a better rating"
 
-        val rating = when {
+        var rating = when {
             s < 1.5 -> Surf.POOR
             s < 3.0 -> Surf.FAIR
             s < 4.0 -> Surf.GOOD
             else -> Surf.EPIC
+        }
+        // Floor: 2 ft (0.6 m) or more at 5 s or more is always worth a look, whatever the wind
+        // and direction do to the score.
+        if (rating == Surf.POOR && height >= 0.6 && period >= 5.0) {
+            rating = Surf.FAIR
+            notes += "2 ft+ at 5 s+: rideable"
         }
         return SurfResult(rating, notes)
     }

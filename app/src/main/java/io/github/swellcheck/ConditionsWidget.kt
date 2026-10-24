@@ -59,6 +59,13 @@ class ConditionsWidget : AppWidgetProvider() {
             )
             v.setOnClickPendingIntent(R.id.w_root, open)
 
+            // Follow the theme chosen in Settings.
+            val pal = Themes.load(context)
+            v.setInt(R.id.w_root, "setBackgroundResource", if (pal.light) R.drawable.widget_bg_light else R.drawable.widget_bg)
+            v.setTextColor(R.id.w_place, pal.text)
+            v.setTextColor(R.id.w_updated, pal.accent)
+            for (id2 in intArrayOf(R.id.w_wind, R.id.w_swell, R.id.w_tide)) v.setTextColor(id2, pal.subtle)
+
             val prefs = Prefs(context)
             val f = Repo.cached(context)
             val lat = prefs.lat
@@ -82,6 +89,7 @@ class ConditionsWidget : AppWidgetProvider() {
             val units = prefs.units
             val facing = prefs.facingOrNull
             val limits = prefs.limits
+            Rating.windLimits = limits
             val nowSec = System.currentTimeMillis() / 1000
             val upcoming = f.upcoming(nowSec)
             // If the cache is old, "now" is better taken from the hourly forecast.
@@ -92,14 +100,14 @@ class ConditionsWidget : AppWidgetProvider() {
             v.setTextViewText(R.id.w_swell, "Swell  ${Fmt.swell(current, units.feet)}")
             val springNeap = Moon.tideLabel(Moon.tideStrength(nowSec)).lowercase()
             v.setTextViewText(R.id.w_tide, Tide.summary(f.hours, nowSec)?.let { "Tide  ${it.replaceFirstChar { c -> c.lowercase() }} · $springNeap" } ?: "Tide  $springNeap")
-            v.setImageViewBitmap(R.id.w_chart, picture(context, manager, id, current, upcoming.take(13), facing, limits, units, nowSec))
+            v.setImageViewBitmap(R.id.w_chart, picture(context, manager, id, current, upcoming.take(13), facing, limits, units, nowSec, lat, lon))
             return v
         }
 
         /** Rating tiles plus a 12-hour mini chart, drawn to fit the widget's size. */
         private fun picture(
             context: Context, manager: AppWidgetManager, id: Int, now: Hour, hours: List<Hour>,
-            facing: Int?, limits: Limits, units: Units, nowSec: Long,
+            facing: Int?, limits: Limits, units: Units, nowSec: Long, lat: Double?, lon: Double?,
         ): Bitmap {
             val d = context.resources.displayMetrics.density
             val opts = manager.getAppWidgetOptions(id)
@@ -110,20 +118,20 @@ class ConditionsWidget : AppWidgetProvider() {
             val picHDp = (hDp - 90).coerceIn(90, 300)
             val bmp = Bitmap.createBitmap((picWDp * d).toInt(), (picHDp * d).toInt(), Bitmap.Config.ARGB_8888)
             val c = Canvas(bmp)
-            val pal = Palette()
+            val pal = Themes.current
             val w = bmp.width.toFloat()
             val gap = 6f * d
             val tileH = 44f * d
 
             val surf = Rating.surf(now, facing).rating
             val paddle = Rating.paddle(now, facing, limits).rating
-            Draw.tile(c, RectF(0f, 0f, w / 2f - gap / 2f, tileH), "SURF", surf.label, surf.color, d * 0.8f, pal)
-            Draw.tile(c, RectF(w / 2f + gap / 2f, 0f, w, tileH), "PADDLE", paddle.label, paddle.color, d * 0.8f, pal)
+            Draw.tile(c, RectF(0f, 0f, w / 2f - gap / 2f, tileH), "PADDLE", paddle.label, paddle.color, d * 0.8f, pal)
+            Draw.tile(c, RectF(w / 2f + gap / 2f, 0f, w, tileH), "SURF", surf.label, surf.color, d * 0.8f, pal)
 
             val chartTop = tileH + gap
             c.save()
             c.translate(0f, chartTop)
-            Draw.chart(c, w, bmp.height - chartTop, hours, facing, limits, units, d, pal, nowSec, compact = true)
+            Draw.chart(c, w, bmp.height - chartTop, hours, facing, limits, units, d, pal, nowSec, compact = true, lat = lat, lon = lon)
             c.restore()
             return bmp
         }

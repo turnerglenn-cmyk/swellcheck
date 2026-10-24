@@ -7,6 +7,8 @@
          the user can still choose "approximate". No background location. -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- Optional: the live scene can be used as a live wallpaper where the phone supports it. -->
+    <uses-feature android:name="android.software.live_wallpaper" android:required="false" />
 
     <application
         android:allowBackup="true"
@@ -40,5 +42,18 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/widget_info" />
         </receiver>
+
+        <service
+            android:name=".SceneWallpaper"
+            android:exported="true"
+            android:label="@string/wallpaper_name"
+            android:permission="android.permission.BIND_WALLPAPER">
+            <intent-filter>
+                <action android:name="android.service.wallpaper.WallpaperService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.wallpaper"
+                android:resource="@xml/wallpaper" />
+        </service>
     </application>
 </manifest>

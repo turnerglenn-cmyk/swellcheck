@@ -13,21 +13,47 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 
 /** One warm, dark look everywhere: deep browns, cream text, amber and coral accents. */
-class Palette {
-    val bg = 0xFF04070D.toInt()
-    val card = 0xFF0A1320.toInt()
-    val text = 0xFFE6F1FF.toInt()
-    val subtle = 0xFF7F9BB8.toInt()
-    val grid = 0x2E4FD1E8
-    val ring = 0x664FD1E8
-    val swell = 0xFF3A86FF.toInt()
-    val wind = 0xFF3DDC97.toInt()
-    val gust = 0xAA3DDC97.toInt()
-    val tide = 0xFF4FD1E8.toInt()
-    val sea = 0x664FD1E8
-    val now = 0xFFFFFFFF.toInt()
-    val onTile = 0xFF04121F.toInt()
-    val accent = 0xFF4FD1E8.toInt()
+/** Colours for screens, charts and the widget. Defaults are the current theme. */
+class Palette(
+    val bg: Int = 0xFF04070D.toInt(),
+    val card: Int = 0xFF0A1320.toInt(),
+    val text: Int = 0xFFE6F1FF.toInt(),
+    val subtle: Int = 0xFF7F9BB8.toInt(),
+    val grid: Int = 0x2E4FD1E8,
+    val ring: Int = 0x664FD1E8,
+    val swell: Int = 0xFF3A86FF.toInt(),
+    val wind: Int = 0xFF3DDC97.toInt(),
+    val gust: Int = 0xAA3DDC97.toInt(),
+    val tide: Int = 0xFF4FD1E8.toInt(),
+    val sea: Int = 0x664FD1E8,
+    val now: Int = 0xFFFFFFFF.toInt(),
+    val onTile: Int = 0xFF04121F.toInt(),
+    val accent: Int = 0xFF4FD1E8.toInt(),
+    val night: Int = 0xFF020408.toInt(),   // chart background at night...
+    val day: Int = 0xFF173A63.toInt(),     // ...fading to this by day
+    val limit: Int = 0xFFFF6B6B.toInt(),   // "your limit" line
+    val dusk: Int = 0,                     // optional sunrise/sunset glow in the sky fade (0 = none)
+    val light: Boolean = false,            // light background: darken rating colours so they read
+    val redOnly: Boolean = false,          // night-vision theme: show everything in shades of red
+) {
+    /** A rating colour (green/amber/red...) adjusted so it reads on this theme. */
+    fun rc(color: Int): Int {
+        val r = (color shr 16) and 0xFF
+        val g = (color shr 8) and 0xFF
+        val b = color and 0xFF
+        return when {
+            redOnly -> when (color) {
+                // Night vision: no greens or ambers. Tell ratings apart by brightness instead.
+                0xFF4FD1E8.toInt() -> 0xFFFFB3AB.toInt()                                  // epic
+                0xFF3DDC97.toInt() -> 0xFFFF7A6E.toInt()                                  // good / go
+                0xFFFFC857.toInt() -> 0xFFC2392C.toInt()                                  // fair / marginal
+                0xFFFF6B6B.toInt() -> 0xFF6E1610.toInt()                                  // poor / no go
+                else -> 0xFF3A0A06.toInt()                                                 // flat / no data
+            }
+            light -> (0xFF shl 24) or ((r * 0.62).toInt() shl 16) or ((g * 0.62).toInt() shl 8) or (b * 0.62).toInt()
+            else -> color
+        }
+    }
 }
 
 /** Drawing shared by the app screens and the widget bitmap. */
@@ -42,7 +68,8 @@ object Draw {
         }
 
     /** Rounded coloured tile: small caption on top, big value below. */
-    fun tile(c: Canvas, r: RectF, caption: String, value: String, color: Int, d: Float, pal: Palette) {
+    fun tile(c: Canvas, r: RectF, caption: String, value: String, rawColor: Int, d: Float, pal: Palette) {
+        val color = pal.rc(rawColor)
         c.drawRoundRect(r, 14f * d, 14f * d, paint((color and 0x00FFFFFF) or 0x22000000))
         c.drawRoundRect(r, 14f * d, 14f * d, paint(pal.ring).apply { style = Paint.Style.STROKE; strokeWidth = 1.5f * d })
         val cap = paint(pal.subtle, 11f * d, bold = true)
@@ -141,10 +168,12 @@ object Draw {
     fun chart(
         c: Canvas, w: Float, h: Float, hours: List<Hour>, facing: Int?, limits: Limits,
         u: Units, d: Float, pal: Palette, nowSec: Long, compact: Boolean,
+        lat: Double? = null, lon: Double? = null,
     ) {
         if (hours.isEmpty() || w <= 0f || h <= 0f) return
         val n = hours.size
         val cw = w / n
+        sky(c, w, 0f, h, hours, cw, lat, lon, d, pal)
         fun xc(i: Int) = cw * i + cw / 2f
         fun xAt(sec: Long) = ((sec - hours[0].time) / 3600f) * cw + cw / 2f
         // Labels and arrows go on the 3-hourly marks (00, 03, 06 ...).
@@ -171,13 +200,13 @@ object Draw {
         // Rating strips
         val stripH = (if (compact) 7f else 11f) * d
         for (i in hours.indices) {
-            fill.color = Rating.surf(hours[i], facing).rating.color
+            fill.color = pal.rc(Rating.surf(hours[i], facing).rating.color)
             c.drawRect(cw * i, y, cw * (i + 1) + 0.5f, y + stripH, fill)
         }
         y += stripH + 2f * d
         if (!compact) {
             for (i in hours.indices) {
-                fill.color = Rating.paddle(hours[i], facing, limits).rating.color
+                fill.color = pal.rc(Rating.paddle(hours[i], facing, limits).rating.color)
                 c.drawRect(cw * i, y, cw * (i + 1) + 0.5f, y + stripH, fill)
             }
             y += stripH + 2f * d
@@ -313,15 +342,50 @@ object Draw {
         }
     }
 
+    /** Sky colour for daylight level f (0 night .. 1 day), with the theme's dawn/dusk glow. */
+    fun skyColor(pal: Palette, f: Float): Int {
+        var col = mix(pal.night, pal.day, f)
+        if (pal.dusk != 0) col = mix(col, pal.dusk, 2.6f * f * (1 - f))   // glow peaks mid-twilight
+        return col
+    }
+
+    /** Mix two colours; f = 0 gives a, 1 gives b. */
+    fun mix(a: Int, b: Int, f: Float): Int {
+        fun ch(sh: Int) = (((a shr sh) and 0xFF) + (((b shr sh) and 0xFF) - ((a shr sh) and 0xFF)) * f).roundToInt()
+        return (0xFF shl 24) or (ch(16) shl 16) or (ch(8) shl 8) or ch(0)
+    }
+
+    /**
+     * Background that fades from night to day with the real sun at this place,
+     * including dawn and dusk. Drawn first so everything else sits on top.
+     */
+    private fun sky(
+        c: Canvas, w: Float, top: Float, bottom: Float, hours: List<Hour>, cw: Float,
+        lat: Double?, lon: Double?, d: Float, pal: Palette,
+    ) {
+        if (lat == null || lon == null || hours.isEmpty()) return
+        val fill = paint()
+        val step = 2f * d
+        var x = 0f
+        while (x < w) {
+            // Column centres are on the hour, so x = cw/2 is hours[0].time.
+            val sec = hours[0].time + (((x + step / 2f) - cw / 2f) / cw * 3600f).toLong()
+            fill.color = skyColor(pal, Sun.light(lat, lon, sec))
+            c.drawRect(x, top, x + step + 0.5f, bottom, fill)
+            x += step
+        }
+    }
+
     // ---- separate sea and wind charts for the main screen -----------------
 
     /** Common frame: day labels + separators, a rating strip, hour labels. Returns the y below the strip. */
     private fun frame(
         c: Canvas, w: Float, h: Float, hours: List<Hour>, d: Float, pal: Palette,
-        title: String, stripColor: (Hour) -> Int,
+        title: String, lat: Double?, lon: Double?, stripColor: (Hour) -> Int,
     ): Float {
         val n = hours.size
         val cw = w / n
+        sky(c, w, 0f, h, hours, cw, lat, lon, d, pal)
         val grid = paint(pal.grid).apply { strokeWidth = 1f * d }
         val dayP = paint(pal.text, 11f * d, bold = true, align = Paint.Align.LEFT)
         val titleP = paint(pal.subtle, 10f * d, bold = true, align = Paint.Align.LEFT)
@@ -372,7 +436,7 @@ object Draw {
     /** Sea chart: surf rating strip, swell bars, swell period, tide curve. */
     fun seaChart(
         c: Canvas, w: Float, h: Float, hours: List<Hour>, facing: Int?, u: Units,
-        d: Float, pal: Palette, nowSec: Long,
+        d: Float, pal: Palette, nowSec: Long, lat: Double? = null, lon: Double? = null,
     ) {
         if (hours.isEmpty() || w <= 0f || h <= 0f) return
         val n = hours.size
@@ -381,7 +445,7 @@ object Draw {
         fun xAt(sec: Long) = ((sec - hours[0].time) / 3600f) * cw + cw / 2f
         val labelIdx = hours.indices.filter { Fmt.hourOfDay(hours[it].time) % 3 == 0 }
 
-        val y0 = frame(c, w, h, hours, d, pal, "SEA") { Rating.surf(it, facing).rating.color }
+        val y0 = frame(c, w, h, hours, d, pal, "SEA", lat, lon) { pal.rc(Rating.surf(it, facing).rating.color) }
         val hourRowH = 20f * d
         val tideRowH = 84f * d
         val periodRowH = 36f * d   // swell direction arrow + period
@@ -480,7 +544,7 @@ object Draw {
     /** Wind chart: paddle rating strip, wind and gust lines, your limit, direction arrows. */
     fun windChart(
         c: Canvas, w: Float, h: Float, hours: List<Hour>, facing: Int?, limits: Limits, u: Units,
-        d: Float, pal: Palette, nowSec: Long,
+        d: Float, pal: Palette, nowSec: Long, lat: Double? = null, lon: Double? = null,
     ) {
         if (hours.isEmpty() || w <= 0f || h <= 0f) return
         val n = hours.size
@@ -488,7 +552,7 @@ object Draw {
         fun xc(i: Int) = cw * i + cw / 2f
         val labelIdx = hours.indices.filter { Fmt.hourOfDay(hours[it].time) % 3 == 0 }
 
-        val y0 = frame(c, w, h, hours, d, pal, "WIND") { Rating.paddle(it, facing, limits).rating.color }
+        val y0 = frame(c, w, h, hours, d, pal, "WIND", lat, lon) { pal.rc(Rating.paddle(it, facing, limits).rating.color) }
         val hourRowH = 14f * d
         val arrowRowH = 50f * d
         val plotTop = y0 + 10f * d
@@ -514,10 +578,10 @@ object Draw {
             else area.lineTo(xc(i), yWind(v))
             lastX = xc(i)
         }
-        if (startedA) { area.lineTo(lastX, plotBottom); area.close(); c.drawPath(area, paint(0x223DDC97)) }
+        if (startedA) { area.lineTo(lastX, plotBottom); area.close(); c.drawPath(area, paint((pal.wind and 0x00FFFFFF) or 0x22000000)) }
 
         val limitY = yWind(u.speed(limits.maxWind))
-        val limitRed = 0xFFFF6B6B.toInt()
+        val limitRed = pal.limit
         c.drawLine(0f, limitY, w, limitY, paint(limitRed).apply {
             style = Paint.Style.STROKE; strokeWidth = 1.5f * d
             pathEffect = DashPathEffect(floatArrayOf(4f * d, 4f * d), 0f)
