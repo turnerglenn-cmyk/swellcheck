@@ -226,7 +226,7 @@ object Draw {
         val waves = hours.map { (it.swellM ?: it.waveM)?.let(u::len) }
         val winds = hours.map { it.windKn?.let(u::speed) }
         val gusts = hours.map { it.gustKn?.let(u::speed) }
-        val waveMax = max(waves.filterNotNull().maxOrNull() ?: 0.0, if (u.feet) 6.0 else 2.0) * 1.15
+        val waveMax = max(waves.filterNotNull().maxOrNull() ?: 0.0, max(if (u.feet) 6.0 else 2.0, u.len(limits.maxWave) * 1.1)) * 1.15
         val windMax = max(
             max(winds.filterNotNull().maxOrNull() ?: 0.0, gusts.filterNotNull().maxOrNull() ?: 0.0),
             u.speed(25.0),
@@ -245,6 +245,12 @@ object Draw {
             }
             c.drawLine(0f, limitY, w, limitY, dash)
         }
+        // ...and your wave limit against the swell bars
+        val waveLimY = yWave(u.len(limits.maxWave))
+        if (waveLimY > plotTop) c.drawLine(0f, waveLimY, w, waveLimY, paint(pal.swell).apply {
+            style = Paint.Style.STROKE; strokeWidth = 1f * d
+            pathEffect = DashPathEffect(floatArrayOf(2f * d, 4f * d), 0f)
+        })
 
         // Swell bars
         fill.color = pal.swell
@@ -435,7 +441,7 @@ object Draw {
 
     /** Sea chart: surf rating strip, swell bars, swell period, tide curve. */
     fun seaChart(
-        c: Canvas, w: Float, h: Float, hours: List<Hour>, facing: Int?, u: Units,
+        c: Canvas, w: Float, h: Float, hours: List<Hour>, facing: Int?, limits: Limits, u: Units,
         d: Float, pal: Palette, nowSec: Long, lat: Double? = null, lon: Double? = null,
     ) {
         if (hours.isEmpty() || w <= 0f || h <= 0f) return
@@ -509,7 +515,10 @@ object Draw {
         if (plotBottom - plotTop < 20f * d) return
 
         val waves = hours.map { (it.swellM ?: it.waveM)?.let(u::len) }
-        val waveMax = max(waves.filterNotNull().maxOrNull() ?: 0.0, if (u.feet) 6.0 else 2.0) * 1.1
+        // The paddle call checks the whole sea (swell plus wind waves) against your wave limit
+        val seas = hours.map { it.waveM?.let(u::len) }
+        val waveMax = max(max(waves.filterNotNull().maxOrNull() ?: 0.0, seas.filterNotNull().maxOrNull() ?: 0.0),
+            max(if (u.feet) 6.0 else 2.0, u.len(limits.maxWave) * 1.2)) * 1.1
         fun yWave(v: Double) = plotBottom - (v / waveMax * (plotBottom - plotTop)).toFloat()
         c.drawLine(0f, plotBottom, w, plotBottom, paint(pal.grid).apply { strokeWidth = 1f * d })
 
@@ -527,6 +536,23 @@ object Draw {
             val top = yWave(v)
             if (plotBottom - top >= 15f * d) c.drawText(txt, xc(i), top + 12f * d, onBar)
             else c.drawText(txt, xc(i), top - 3f * d, above)
+        }
+        // The whole sea state as a thin line over the swell bars, and your wave limit
+        run {
+            val path = Path(); var started = false
+            for (i in hours.indices) {
+                val v = seas[i]
+                if (v == null) { started = false; continue }
+                if (!started) { path.moveTo(xc(i), yWave(v)); started = true } else path.lineTo(xc(i), yWave(v))
+            }
+            c.drawPath(path, paint((pal.text and 0x00FFFFFF) or (150 shl 24)).apply { style = Paint.Style.STROKE; strokeWidth = 1.2f * d })
+            val limitY = yWave(u.len(limits.maxWave))
+            c.drawLine(0f, limitY, w, limitY, paint(pal.limit).apply {
+                style = Paint.Style.STROKE; strokeWidth = 1.5f * d
+                pathEffect = DashPathEffect(floatArrayOf(4f * d, 4f * d), 0f)
+            })
+            c.drawText("your wave limit (line = whole sea, bars = swell)", 6f * d, limitY - 4f * d,
+                paint(pal.limit, 9.5f * d, bold = true, align = Paint.Align.LEFT))
         }
         nowLine(c, hours, cw, tideTop - 6f * d, plotBottom, nowSec, d, pal)
 
@@ -563,7 +589,7 @@ object Draw {
         val gusts = hours.map { it.gustKn?.let(u::speed) }
         val windMax = max(
             max(winds.filterNotNull().maxOrNull() ?: 0.0, gusts.filterNotNull().maxOrNull() ?: 0.0),
-            u.speed(limits.maxWind) * 1.2,
+            u.speed(limits.maxGust) * 1.1,
         ) * 1.08
         fun yWind(v: Double) = plotBottom - (v / windMax * (plotBottom - plotTop)).toFloat()
         c.drawLine(0f, plotBottom, w, plotBottom, paint(pal.grid).apply { strokeWidth = 1f * d })
@@ -586,7 +612,13 @@ object Draw {
             style = Paint.Style.STROKE; strokeWidth = 1.5f * d
             pathEffect = DashPathEffect(floatArrayOf(4f * d, 4f * d), 0f)
         })
-        c.drawText("your limit", 6f * d, limitY - 4f * d, paint(limitRed, 9.5f * d, bold = true, align = Paint.Align.LEFT))
+        c.drawText("your wind limit", 6f * d, limitY - 4f * d, paint(limitRed, 9.5f * d, bold = true, align = Paint.Align.LEFT))
+        val gustY = yWind(u.speed(limits.maxGust))
+        c.drawLine(0f, gustY, w, gustY, paint(pal.gust).apply {
+            style = Paint.Style.STROKE; strokeWidth = 1.2f * d
+            pathEffect = DashPathEffect(floatArrayOf(2f * d, 4f * d), 0f)
+        })
+        c.drawText("your gust limit", 6f * d, gustY - 4f * d, paint(pal.gust, 9.5f * d, bold = true, align = Paint.Align.LEFT))
 
         fun line(vals: List<Double?>, p: Paint) {
             val path = Path()

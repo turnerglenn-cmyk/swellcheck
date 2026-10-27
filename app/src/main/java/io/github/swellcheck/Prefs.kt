@@ -54,7 +54,16 @@ class Prefs(context: Context) {
         get() = getD("max_wave") ?: 1.2
         set(v) = putD("max_wave", v)
 
-    val limits: Limits get() = Limits(maxWind, maxGust, maxWave)
+    var maxOffshore: Double
+        get() = getD("max_offshore") ?: 10.0
+        set(v) = putD("max_offshore", v)
+
+    val limits: Limits get() = Limits(maxWind, maxGust, maxWave, maxOffshore)
+
+    /** When Settings were last saved (the live wallpaper rebuilds its scene when this changes). */
+    var settingsChanged: Long
+        get() = sp.getLong("settings_changed", 0L)
+        set(v) = sp.edit().putLong("settings_changed", v).apply()
 
     /** Colour theme id (see Themes). */
     var theme: String

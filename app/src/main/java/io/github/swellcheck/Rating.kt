@@ -20,7 +20,8 @@ enum class Paddle(val label: String, val color: Int) {
 
 data class SurfResult(val rating: Surf, val notes: List<String>)
 data class PaddleResult(val rating: Paddle, val reasons: List<String>)
-data class Limits(val maxWind: Double, val maxGust: Double, val maxWave: Double)
+/** Your paddling limits (knots, metres). [maxOffshore]: the most offshore wind you'll paddle in, blowing you away from the beach. */
+data class Limits(val maxWind: Double, val maxGust: Double, val maxWave: Double, val maxOffshore: Double = 10.0)
 
 enum class WindKind { OFFSHORE, CROSS, ONSHORE }
 
@@ -149,8 +150,8 @@ object Rating {
 
         val wd = h.windDir
         if (facing != null && wd != null && windKind(wd, facing.toDouble()) == WindKind.OFFSHORE) {
-            if (ws > 10.0) { level = 2; reasons += "Offshore wind: risk of being blown out to sea" }
-            else if (ws > 6.0) { level = max(level, 1); reasons += "Offshore breeze: stay close in" }
+            if (ws > lim.maxOffshore) { level = 2; reasons += "Offshore wind over your limit: risk of being blown out to sea" }
+            else if (ws > 0.6 * lim.maxOffshore) { level = max(level, 1); reasons += "Offshore breeze near your limit: stay close in" }
         }
         if (h.waveM == null) reasons += "No wave data at this spot"
 

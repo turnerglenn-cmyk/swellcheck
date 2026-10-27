@@ -2505,7 +2505,9 @@ object SceneArt {
                       behindSign: Boolean = false) {
         // Kayaks: what they're doing = the paddle call, except that sea kayakers go out and surf
         // whenever the surf is up (the surf rating is already poor if it's too windy)
-        val surfUp = (s.surf == Surf.FAIR || s.surf == Surf.GOOD || s.surf == Surf.EPIC) && s.periodS >= 5.0 && sw.h >= 0.4
+        // ...but never beyond your paddling limits: on a "No go" day the kayaks stay on the sand
+        val surfUp = (s.surf == Surf.FAIR || s.surf == Surf.GOOD || s.surf == Surf.EPIC) && s.periodS >= 5.0 && sw.h >= 0.4 &&
+            s.paddle != Paddle.NO_GO
         if (behindSign) {
             // only a swimmer's kayak being emptied further up the beach than the sign
             if (surfUp || s.paddle == Paddle.GO)

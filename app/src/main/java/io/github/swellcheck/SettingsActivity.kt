@@ -128,12 +128,16 @@ class SettingsActivity : Activity() {
         val u = prefs.units
         val limitsCard = Ui.card(this)
         limitsCard.addView(Ui.label(this, "Your paddling limits"))
-        limitsCard.addView(Ui.text(this, "Above these it's \"No go\". Within 75% of them it's \"Marginal\".", 13f).apply {
+        limitsCard.addView(Ui.text(this, "Above these it's \"No go\". Within 75% of them it's \"Marginal\" (60% for offshore wind).", 13f).apply {
             setTextColor(pal.subtle)
         })
         val maxWind = numberRow(limitsCard, "Max wind", u.wind.label, round1(u.speed(prefs.maxWind)))
         val maxGust = numberRow(limitsCard, "Max gusts", u.wind.label, round1(u.speed(prefs.maxGust)))
         val maxWave = numberRow(limitsCard, "Max waves", u.lenLabel, round1(u.len(prefs.maxWave)))
+        val maxOffshore = numberRow(limitsCard, "Max offshore wind", u.wind.label, round1(u.speed(prefs.maxOffshore)))
+        limitsCard.addView(Ui.text(this, "Offshore wind blows you away from the beach and the sea looks calm close in. Keep this low.", 12f).apply {
+            setTextColor(pal.subtle)
+        })
         root.addView(limitsCard)
 
         // --- Save
@@ -165,8 +169,11 @@ class SettingsActivity : Activity() {
             maxWind.text.toString().toDoubleOrNull()?.takeIf { it > 0 }?.let { prefs.maxWind = it / u.wind.perKnot }
             maxGust.text.toString().toDoubleOrNull()?.takeIf { it > 0 }?.let { prefs.maxGust = it / u.wind.perKnot }
             maxWave.text.toString().toDoubleOrNull()?.takeIf { it > 0 }?.let { prefs.maxWave = it / lenFactor }
+            maxOffshore.text.toString().toDoubleOrNull()?.takeIf { it > 0 }?.let { prefs.maxOffshore = it / u.wind.perKnot }
             prefs.useFeet = feet.isChecked
             prefs.windUnit = units.getOrElse(windUnit.selectedItemPosition) { WindUnit.MPH }
+            Rating.windLimits = prefs.limits                 // the surf call uses them straight away too
+            prefs.settingsChanged = System.currentTimeMillis()   // the live wallpaper picks this up
             ConditionsWidget.updateAll(applicationContext)
             finish()
         }

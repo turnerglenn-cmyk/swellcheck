@@ -91,7 +91,7 @@ class ForecastChartView(context: Context, private val sea: Boolean) : View(conte
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val now = System.currentTimeMillis() / 1000
-        if (sea) Draw.seaChart(canvas, width.toFloat(), height.toFloat(), hours, facing, units, d, Themes.current, now, lat, lon)
+        if (sea) Draw.seaChart(canvas, width.toFloat(), height.toFloat(), hours, facing, limits, units, d, Themes.current, now, lat, lon)
         else Draw.windChart(canvas, width.toFloat(), height.toFloat(), hours, facing, limits, units, d, Themes.current, now, lat, lon)
     }
 }

@@ -29,6 +29,7 @@ class SceneWallpaper : WallpaperService() {
         private var visible = false
         private var input: SceneInput? = null
         private var builtAt = 0L
+        private var builtStamp = -1L
         @Volatile private var fetching = false
 
         private val frame = object : Runnable {
@@ -72,7 +73,9 @@ class SceneWallpaper : WallpaperService() {
 
         private fun drawFrame() {
             val nowMs = System.currentTimeMillis()
-            if (nowMs - builtAt > REBUILD_MS) {
+            val stamp = Prefs(applicationContext).settingsChanged
+            if (nowMs - builtAt > REBUILD_MS || stamp != builtStamp) {
+                builtStamp = stamp
                 input = SceneInput.fromCache(applicationContext)
                 builtAt = nowMs
                 if (nowMs - Prefs(applicationContext).fetchedAt > STALE_MS) refreshInBackground()

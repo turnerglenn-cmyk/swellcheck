@@ -1,0 +1,1 @@
+Your paddling limits now show everywhere: the sea chart marks your wave limit against the whole sea (swell plus wind waves), which is what the paddle call checks; the wind chart shows your gust limit too, and the widget chart your wave limit. Kayakers in the live scene stay on the beach on a No go day. New limits take effect straight away, including on the live wallpaper.

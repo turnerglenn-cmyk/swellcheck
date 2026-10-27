@@ -113,8 +113,8 @@ object Plan {
             val wd = it.windDir; val ws = it.windKn
             wd != null && ws != null && ws > kn && Rating.windKind(wd, facing.toDouble()) == WindKind.OFFSHORE
         }
-        val offshoreStrong = offshoreOver(10.0)   // same thresholds as Rating.paddle
-        val offshoreBreeze = offshoreOver(6.0)
+        val offshoreStrong = offshoreOver(limits.maxOffshore)   // same thresholds as Rating.paddle
+        val offshoreBreeze = offshoreOver(0.6 * limits.maxOffshore)
         val parts = mutableListOf<String>()
         fun over(v: Double, lim: Double) = v > lim
         fun near(v: Double, lim: Double) = v > 0.75 * lim
@@ -126,7 +126,7 @@ object Plan {
             wave != null && over(wave.waveM!!, limits.maxWave) ->
                 parts += "Waves build to ${Fmt.height(wave.waveM, units.feet)} around ${at(wave)}, over your limit."
             offshoreStrong != null ->
-                parts += "Offshore wind of ${Fmt.speed(offshoreStrong.windKn, units)} from ${at(offshoreStrong)}: risk of being blown out to sea."
+                parts += "Offshore wind of ${Fmt.speed(offshoreStrong.windKn, units)} from ${at(offshoreStrong)}, over your ${Fmt.speed(limits.maxOffshore, units)} offshore limit: risk of being blown out to sea."
             gust != null && near(gust.gustKn!!, limits.maxGust) ->
                 parts += "Gusts up to ${Fmt.speed(gust.gustKn, units)} around ${at(gust)}, close to your ${Fmt.speed(limits.maxGust, units)} limit."
             wind != null && near(wind.windKn!!, limits.maxWind) ->
