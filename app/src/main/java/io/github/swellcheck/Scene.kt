@@ -302,6 +302,10 @@ object SceneArt {
     internal var runLog: ((String) -> Unit)? = null
     private val planCache = HashMap<String, Any>()
 
+    /** The sea's colours along the water's edge from the last frame's sea (one per mesh column). */
+    private var shoreCols: IntArray? = null
+    private var shoreColPx = 1f
+
     /** Something on the water waiting to be drawn, and how far out it is. */
     private class Layered(val x: Double, val z: Double, val draw: () -> Unit)
     private var layerQueue: MutableList<Layered>? = null
@@ -573,10 +577,12 @@ object SceneArt {
         fun r(cc: Int) = ((cc shr 16) and 255) / 255.0
         fun g(cc: Int) = ((cc shr 8) and 255) / 255.0
         fun b(cc: Int) = (cc and 255) / 255.0
-        val light = (0.18 + 0.82 * day) * (1 - 0.25 * overcast)
-        val deep = mix(0xFF0B2B3A.toInt(), 0xFF123E4C.toInt(), 0.5)
-        val shallow = 0xFF4A7468.toInt()                        // sandy green where the surf stirs the bottom up
-        val sss = 0xFF2E9C8E.toInt()                             // light through a thin crest
+        // A darker, deeper-looking sea by day (the night sea already reads right)
+        val light = (0.18 + 0.66 * day) * (1 - 0.25 * overcast)
+        val deep = mix(0xFF07222E.toInt(), 0xFF0C3140.toInt(), 0.5)
+        val shallow = 0xFF35594F.toInt()                        // sandy green where the surf stirs the bottom up
+        val sss = 0xFF247C70.toInt()                             // light through a thin crest
+        val skyRefl = 1 - 0.22 * day                             // the sky's reflection, a touch duller by day
         val foamLit = mix(0xFFE9EEF0.toInt(), 0xFFFFFFFF.toInt(), day * (1 - overcast))
         val foamShade = 0xFFB4C4CC.toInt()
         val haze = mix(skyLow, 0xFFFFFFFF.toInt(), 0.05)
@@ -624,7 +630,7 @@ object SceneArt {
                 val glow = smooth(smp.eta / (sw.h * 0.45 + 0.05)) * (sz * 2.5).coerceIn(0.0, 1.0) * (0.45 + 0.55 * max(0.0, Sz)) * day
                 body = mix(body, sss, glow * 0.6)
                 var cr = r(body) * light; var cg = g(body) * light; var cb = b(body) * light
-                cr += (r(skyC) - cr) * fres; cg += (g(skyC) - cg) * fres; cb += (b(skyC) - cb) * fres
+                cr += (r(skyC) * skyRefl - cr) * fres; cg += (g(skyC) * skyRefl - cg) * fres; cb += (b(skyC) * skyRefl - cb) * fres
                 // glint: tight on glassy water, a broad scatter of sparkle when it's ruffled
                 if (lamp > 0) {
                     val rs = max(0.0, Rx * Sx + Ry * Sy + Rz * Sz)
@@ -643,6 +649,14 @@ object SceneArt {
                 colors[vi] = (0xFF shl 24) or ((cr.coerceIn(0.0, 1.0) * 255).toInt() shl 16) or
                     ((cg.coerceIn(0.0, 1.0) * 255).toInt() shl 8) or (cb.coerceIn(0.0, 1.0) * 255).toInt()
             }
+        }
+        // remember the sea's colour just off the water's edge, so the thin sheet of water running up
+        // the sand carries on in the same colours (and moves with the waves) instead of a fixed band
+        run {
+            var best = rows; var bd = Double.MAX_VALUE
+            for (ri in 0..rows) { val dd = abs(zRow[ri] - (zs + 0.85)); if (dd < bd) { bd = dd; best = ri } }
+            shoreCols = IntArray(cols) { colors[best * cols + it] }
+            shoreColPx = colPx
         }
         // under-paint, so nothing shows through where waves lift the mesh
         c.drawRect(0f, v.horizon, v.w, yShore + 1f, p(colors[cols / 2]))
@@ -1240,7 +1254,9 @@ object SceneArt {
         else 0.27 * (0.38 + 0.62 * (1 - (-u).pow(3.0)).coerceAtLeast(0.0).pow(0.5))
 
     /** What the paddler is doing with the paddle. */
-    private enum class Stroke { PADDLE, SPRINT, RUDDER, BRACE, REST }
+    /** Paddle strokes. SWEEP: a wide forward sweep on one side to turn away from it. BOW_RUDDER: the
+     *  blade planted out by the bow, pulling the bow round towards that side. RUDDER: stern rudder. */
+    private enum class Stroke { PADDLE, SPRINT, RUDDER, BRACE, REST, SWEEP, BOW_RUDDER }
     /** The pieces a sea-kayak surf run is made of. */
     private enum class RunLeg { STRAIGHT, DIAG, STURN }
     /** How a run finishes: pull off over the back, ride the whitewater in and spin out, broach and
@@ -1261,7 +1277,7 @@ object SceneArt {
     private fun seaKayak(c: Canvas, v: View3, d: Float, t: Float, x: Double, z: Double, hx: Double, hz: Double,
                          bob: Double, day: Double, moving: Boolean, colour: Int = 0, stroke: Stroke = Stroke.PADDLE,
                          side: Double = 1.0, foam: Double = 0.0, phase: Double = 0.0, roll: Double = 0.0, pitch: Double = 0.0,
-                         empty: Boolean = false) {
+                         empty: Boolean = false, tilt: Double = 0.0) {
         val col = KAYAK_COLOURS[colour]
         val hull = shadeDay(col[0], day)
         val hullDark = shadeDay(col[1], day)
@@ -1349,7 +1365,13 @@ object SceneArt {
         }
         if (empty) { drawFoam(true); drawHull(); drawFoam(false); return }
         // Paddler, just behind the middle (leaning over as they roll or brace)
-        val lean = if (roll > 0) 0.9 * sin(roll) * side else if (stroke == Stroke.BRACE) 0.3 * side else 0.0
+        // Upper body: leaning onto a brace or into a sweep, and balancing the boat on the water ([tilt])
+        val lean = (if (roll > 0) 0.9 * sin(roll) * side else when (stroke) {
+            Stroke.BRACE -> 0.3 * side
+            Stroke.SWEEP -> 0.12 * side
+            Stroke.BOW_RUDDER -> 0.1 * side
+            else -> 0.0
+        }) + (if (roll > 0) 0.0 else tilt)
         val cx = x - hx * 0.25; val cz = z - hz * 0.25
         val k = v.size(1.0, cz)
         val body = shadeDay(col[3], day)
@@ -1371,6 +1393,22 @@ object SceneArt {
             // Resting across the deck, waiting
             Stroke.REST -> listOf(Triple(cx + nx * 1.05 + hx * 0.3, cz + nz * 1.05 + hz * 0.3, bob + 0.4),
                 Triple(cx - nx * 1.05 + hx * 0.3, cz - nz * 1.05 + hz * 0.3, bob + 0.4))
+            // Forward sweep: a long low arc on one side from the toes right round to the stern
+            Stroke.SWEEP -> {
+                val cyc = ((phase + t * 0.55) % 1.0 + 1.0) % 1.0
+                val th = if (cyc < 0.8) PI * smooth(cyc / 0.8) else PI * (1 - smooth((cyc - 0.8) / 0.2))
+                val wet = if (cyc < 0.8) 0.0 else 0.35 * sin(PI * (cyc - 0.8) / 0.2)       // lifted on the way back
+                val bx = cx + hx * 1.5 * cos(th) + nx * side * (0.45 + 1.15 * sin(th))
+                val bz = cz + hz * 1.5 * cos(th) + nz * side * (0.45 + 1.15 * sin(th))
+                listOf(Triple(bx, bz, bob + 0.02 + wet),
+                    Triple(cx - (bx - cx) * 0.45, cz - (bz - cz) * 0.45, bob + 0.75))
+            }
+            // Bow rudder: blade planted upright out by the bow, top hand high over the head
+            Stroke.BOW_RUDDER -> {
+                val wob = 0.05 * sin(t * 3.0)
+                listOf(Triple(cx + hx * 1.15 + nx * side * 0.55, cz + hz * 1.15 + nz * side * 0.55, bob - 0.15),
+                    Triple(cx + hx * (0.35 + wob) - nx * side * 0.05, cz + hz * (0.35 + wob) - nz * side * 0.05, bob + 1.25))
+            }
         }
         val (a, b) = ends
         fun lerp3(p: Triple<Double, Double, Double>, q: Triple<Double, Double, Double>, f: Double) =
@@ -1392,7 +1430,7 @@ object SceneArt {
         fun rise(e: Triple<Double, Double, Double>, o: Triple<Double, Double, Double>) =
             if (e.third >= deckH || o.third <= e.third) e else lerp3(e, o, ((deckH - e.third) / (o.third - e.third)).coerceIn(0.0, 1.0))
         fun bladeOf(e: Triple<Double, Double, Double>, o: Triple<Double, Double, Double>) = lerp3(o, e, 0.82)
-        val splashing = moving || stroke == Stroke.BRACE || stroke == Stroke.RUDDER
+        val splashing = moving || stroke == Stroke.BRACE || stroke == Stroke.RUDDER || stroke == Stroke.SWEEP || stroke == Stroke.BOW_RUDDER
         val farEnds = ends.filter { behind(it.second, cz) && it.third < deckH }
         // 1. what's behind the boat: the far blade and the low part of its shaft, and foam on that side.
         //    The hull is drawn over them; no splash is shown there, it's hidden by the boat.
@@ -1481,7 +1519,9 @@ object SceneArt {
     }
 
     /** What a group of sea kayaks gets up to on a GO day. */
-    private enum class Act { TRIP, SURF, RAFT, ROLL, CRUISE }
+    /** WANDER: each boat off on its own, exploring wherever takes its fancy. INSHORE: a play along the
+     *  beach just outside the break. */
+    private enum class Act { TRIP, SURF, RAFT, ROLL, CRUISE, WANDER, INSHORE }
 
     private class Seg(val act: Act, val start: Double, val len: Double, val who: Int, val seed: Int, val dir: Double)
 
@@ -1501,11 +1541,14 @@ object SceneArt {
                 val x = r(1)
                 if (surfOnly) Act.SURF                          // they've come out for the surf and nothing else
                 else if (surfable && surfUp) when {             // a go day with real surf: mostly surfing
-                    x < 0.65 -> Act.SURF; x < 0.72 -> Act.TRIP; x < 0.84 -> Act.CRUISE; x < 0.93 -> Act.RAFT; else -> Act.ROLL
+                    x < 0.58 -> Act.SURF; x < 0.64 -> Act.TRIP; x < 0.72 -> Act.CRUISE; x < 0.80 -> Act.WANDER
+                    x < 0.85 -> Act.INSHORE; x < 0.93 -> Act.RAFT; else -> Act.ROLL
                 } else if (surfable) when {
-                    x < 0.40 -> Act.SURF; x < 0.52 -> Act.TRIP; x < 0.72 -> Act.CRUISE; x < 0.86 -> Act.RAFT; else -> Act.ROLL
+                    x < 0.34 -> Act.SURF; x < 0.44 -> Act.TRIP; x < 0.58 -> Act.CRUISE; x < 0.70 -> Act.WANDER
+                    x < 0.78 -> Act.INSHORE; x < 0.90 -> Act.RAFT; else -> Act.ROLL
                 } else when {
-                    x < 0.25 -> Act.TRIP; x < 0.62 -> Act.CRUISE; x < 0.82 -> Act.RAFT; else -> Act.ROLL
+                    x < 0.20 -> Act.TRIP; x < 0.42 -> Act.CRUISE; x < 0.62 -> Act.WANDER; x < 0.74 -> Act.INSHORE
+                    x < 0.88 -> Act.RAFT; else -> Act.ROLL
                 }
             }
             if (act == prev && !surfOnly) act = if (act == Act.SURF) Act.CRUISE else if (surfable) Act.SURF else Act.RAFT
@@ -1515,6 +1558,8 @@ object SceneArt {
                 Act.CRUISE -> 55.0 + 50.0 * r(2)
                 Act.RAFT -> 35.0 + 45.0 * r(2)
                 Act.ROLL -> 26.0 + 24.0 * r(2)
+                Act.WANDER -> 70.0 + 90.0 * r(2)
+                Act.INSHORE -> 50.0 + 60.0 * r(2)
             }
             val len = kotlin.math.ceil(secs / tv) * tv
             // Who joins in (bit i = kayak i): usually everyone, sometimes two, one for rolling practice
@@ -1567,6 +1612,23 @@ object SceneArt {
                    val moving: Boolean = true, val roll: Double = 0.0, val swimT: Double = -1.0, val run: Any? = null)
 
         fun bob(x: Double, z: Double) = sw.height(t, x, z)
+        /** Heading as an angle (0 = towards the beach, increasing = turning to the paddler's left). */
+        fun headAng(hx: Double, hz: Double) = kotlin.math.atan2(hx, -hz)
+        fun angDiff(a: Double, b: Double): Double { var x = a - b; while (x > PI) x -= 2 * PI; while (x < -PI) x += 2 * PI; return x }
+        /** Turning: forward sweeps on the outside of the turn, the odd forward stroke between; a
+         *  sharp turn gets a bow rudder on the inside now and then. [rate] in rad/s, + = turning left. */
+        fun steer(p: Pose, rate: Double, i: Int): Pose {
+            if (p.stroke != Stroke.PADDLE || abs(rate) < 0.1) return p
+            val turnL = sign(rate)
+            val cyc = (t * 0.55 + i * 0.37) % 3.0
+            val st = when {
+                abs(rate) > 0.45 && hash(i * 31 + kotlin.math.floor(t / 6.0).toInt()) < 0.5 -> Stroke.BOW_RUDDER
+                cyc < (if (abs(rate) > 0.25) 2.6 else 1.6) -> Stroke.SWEEP
+                else -> Stroke.PADDLE
+            }
+            val side = if (st == Stroke.BOW_RUDDER) turnL else -turnL
+            return Pose(p.x, p.z, p.hx, p.hz, p.h, st, side, p.foam, p.moving, p.roll, p.swimT, p.run)
+        }
         /** Sitting it out: drifting at the spot, or pottering round in a slow circle. */
         fun idle(i: Int): Pose {
             val r = hash(seg.seed * 3 + i * 7)
@@ -1576,7 +1638,8 @@ object SceneArt {
                 val rad = 3.0 * smooth(min(u, 1 - u) / 0.08)      // eases in from, and back to, the spot
                 val x = x0 + rad * cos(a); val z = zL + rad * sin(a)
                 val (hx, hz) = norm(-sin(a) * (if (r < 0.22) 1 else -1), cos(a) * (if (r < 0.22) 1 else -1))
-                Pose(x, z, hx, hz, bob(x, z), Stroke.PADDLE)
+                val (hx2, hz2) = norm(-sin(a + 0.12) * (if (r < 0.22) 1 else -1), cos(a + 0.12) * (if (r < 0.22) 1 else -1))
+                steer(Pose(x, z, hx, hz, bob(x, z), Stroke.PADDLE), angDiff(headAng(hx2, hz2), headAng(hx, hz)) / 1.0 * 1.6, i)
             } else {
                 val (hx, hz) = norm(if (r < 0.7) 1.0 else -0.4, if (r < 0.7) 0.15 else -1.0)
                 Pose(x0, zL, hx, hz, bob(x0, zL), Stroke.REST, moving = false)
@@ -1742,6 +1805,10 @@ object SceneArt {
             val (hx, hz) = norm(h0x + (tx - h0x) * m, h0z + (tz - h0z) * m)
             val h = bob(x, z)
             val inBreak = z - zs < breakDepth + 1
+            // turning to face the way home: sweeps on the outside first
+            val turnLeft = angDiff(headAng(tx, tz), headAng(h0x, h0z))
+            if (m < 0.95 && abs(turnLeft) > 0.5)
+                return Pose(x, z, hx, hz, h, Stroke.SWEEP, -sign(turnLeft), if (inBreak && h > sw.h * 0.4) 0.7 else 0.0)
             return Pose(x, z, hx, hz, h, if (sprint || inBreak) Stroke.SPRINT else Stroke.PADDLE, 1.0,
                 if (inBreak && h > sw.h * 0.4) 0.7 else 0.0)
         }
@@ -1764,7 +1831,9 @@ object SceneArt {
                         // stern rudder on the side away from where it's turning (and hauling it back after a broach)
                         val turning = r.scale * vlatRaw(r.parts, r.turnAt, r.turnSgn, tc + 0.4) - r.scale * vlatRaw(r.parts, r.turnAt, r.turnSgn, tc)
                         val side = if (b > 0.05) r.turnSgn else if (turning >= 0) -1.0 else 1.0
-                        Pose(x, z, hx, hz, face, Stroke.RUDDER, side, if (white) 0.35 + 0.5 * b else 0.0)
+                        // a hard carve gets a forward sweep on the outside; otherwise steer on the stern rudder
+                        val st = if (b <= 0.05 && abs(turning) > 0.3 * speed && !white) Stroke.SWEEP else Stroke.RUDDER
+                        Pose(x, z, hx, hz, face, st, if (st == Stroke.SWEEP) -sign(turning) else side, if (white) 0.35 + 0.5 * b else 0.0)
                     }
                 }
             }
@@ -1779,7 +1848,9 @@ object SceneArt {
                     val th = thE + (sg * 2.2 - thE) * smooth(w)
                     val (hx, hz) = hOf(th)
                     val x = r.xE + sg * 2.0 * w; val z = r.zE + 2.5 * w * w
-                    return Pose(x, z, hx, hz, bob(x, z), Stroke.RUDDER, -sg)
+                    // stern rudder to start the turn, then sweeps to bring it right round over the back
+                    return if (w < 0.45) Pose(x, z, hx, hz, bob(x, z), Stroke.RUDDER, -sg)
+                    else Pose(x, z, hx, hz, bob(x, z), Stroke.SWEEP, -sg)
                 }
                 RunEnd.KICK -> {
                     // Ridden right in: spin out of the whitewater on a brace and face back out to sea
@@ -1787,8 +1858,11 @@ object SceneArt {
                     val th = thE + sg * PI * smooth(w)
                     val (hx, hz) = hOf(th)
                     val x = r.xE + sg * 1.2 * smooth(w); val z = r.zE + (ez - r.zE) * smooth(w)
-                    val st = if (w < 0.5) Stroke.BRACE else Stroke.SPRINT
-                    return Pose(x, z, hx, hz, bob(x, z) * 0.6, st, if (hx > 0) 1.0 else -1.0, 0.8 * (1 - w))
+                    // spun out of it on a brace, or (the neater way) pivoting round a bow rudder
+                    val bowRudder = hash(r.parts.size * 7 + i * 3 + (r.xE * 10).toInt()) < 0.5
+                    val st = if (w < 0.5) (if (bowRudder) Stroke.BOW_RUDDER else Stroke.BRACE) else Stroke.SPRINT
+                    val sd = if (st == Stroke.BOW_RUDDER) sg else if (hx > 0) 1.0 else -1.0
+                    return Pose(x, z, hx, hz, bob(x, z) * 0.6, st, sd, 0.8 * (1 - w))
                 }
                 RunEnd.SIDE -> {
                     // Broached and side-surfing the whitewater in on a low brace on the wave side
@@ -2213,17 +2287,21 @@ object SceneArt {
                     val (hx, hz) = norm(seg.dir * (130.0 * sin(p) + 25.0 * cos(p)), 150.0 * sin(p))
                     val lat = (if (rank == 1) 1.6 else -1.6 * (rank / 2)) * smooth(min(u, 1 - u) / 0.05)
                     val x = lx - hz * lat; val z = max(zs + 3, lz + hx * lat)
-                    settle(i, Pose(x, z, hx, hz, bob(x, z)), 0.05)
+                    val p2 = p + 2 * PI * 0.5 / seg.len
+                    val (hx2, hz2) = norm(seg.dir * (130.0 * sin(p2) + 25.0 * cos(p2)), 150.0 * sin(p2))
+                    steer(settle(i, Pose(x, z, hx, hz, bob(x, z)), 0.05), angDiff(headAng(hx2, hz2), headAng(hx, hz)) / 0.5, i)
                 }
                 Act.CRUISE -> {
                     // A run along the coast in a line: out of the view to one side and back on a wider lane
                     val uu = (u - rank * 0.03).coerceIn(0.0, 1.0)
                     val th = 2 * PI * uu
-                    val span = halfW * 1.3 + 12
+                    val span = min(halfW * 1.3 + 12, 3.5 * seg.len / PI)          // no faster than ~3.5 m/s
                     val x = home[members[0]] + seg.dir * span * (1 - cos(th)) / 2 + rank * 0.0
                     val z = zL + 6.0 * (1 - cos(th)) / 2 + 4.0 * sin(th) + rank * 0.9
                     val (hx, hz) = norm(seg.dir * span * sin(th) / 2, 3.0 * sin(th) + 4.0 * cos(th))
-                    settle(i, Pose(x, z, hx, hz, bob(x, z)))
+                    val th2 = th + 2 * PI * 0.5 / seg.len
+                    val (hx2, hz2) = norm(seg.dir * span * sin(th2) / 2, 3.0 * sin(th2) + 4.0 * cos(th2))
+                    steer(settle(i, Pose(x, z, hx, hz, bob(x, z)), 0.2), angDiff(headAng(hx2, hz2), headAng(hx, hz)) / 0.5, i)
                 }
                 Act.RAFT -> {
                     // Paddle together and raft up side by side, paddles across the decks, for a chat
@@ -2254,6 +2332,50 @@ object SceneArt {
                         foam = if (roll > 0.2) 0.6 else 0.0, moving = false, roll = roll)
                 }
                 Act.SURF -> surfPose(i, rank)
+                Act.WANDER -> {
+                    // Each boat off on its own: a wandering, looping path (two slow sways at odd
+                    // rates, so it never quite repeats), out to sea and back, side to side
+                    val sd = seg.seed * 7 + i * 13
+                    fun at(tt: Double): Pair<Double, Double> {
+                        val a1 = 0.6 + 0.8 * hash(sd + 1); val a2 = 0.3 + 0.5 * hash(sd + 2)
+                        val w1 = 2 * PI / (130 + 90 * hash(sd + 3)); val w2 = 2 * PI / (55 + 35 * hash(sd + 4))   // slow: a paddler's 1.5-2.5 m/s
+                        val p1 = 2 * PI * hash(sd + 5); val p2 = 2 * PI * hash(sd + 6)
+                        val out = 15.0 + 35.0 * hash(sd + 7)                     // how far out it ranges
+                        val zz = zL + out * (0.5 - 0.5 * cos(w1 * 0.7 * tt + p1)) * (0.6 + 0.4 * sin(w2 * tt + p2))
+                        val lim = halfAt(zz) * 0.8
+                        val xx = home[i] + (lim - abs(home[i]) * 0.3) * (a1 * sin(w1 * tt + p2) + a2 * sin(w2 * 1.3 * tt + p1)) / (a1 + a2)
+                        return Pair(xx.coerceIn(-lim, lim), max(zL, zz))
+                    }
+                    val ease = smooth(min(u, 1 - u) / 0.3)
+                    fun eased(tt: Double): Pair<Double, Double> { val (xx, zz) = at(tt); val e = smooth(min(tt / seg.len, 1 - tt / seg.len) / 0.3)
+                        return Pair(home[i] + (xx - home[i]) * e, zL + (zz - zL) * e) }
+                    val (x, z) = eased(tl)
+                    val (x2, z2) = eased(tl + 0.6)
+                    val (x3, z3) = eased(tl + 1.2)
+                    val moving = kotlin.math.hypot(x2 - x, z2 - z) > 0.05
+                    val (hx, hz) = if (moving) norm(x2 - x, z2 - z) else norm(1.0, 0.2)
+                    val (hx2, hz2) = norm(x3 - x2, z3 - z2)
+                    val p0 = Pose(x, z, hx, hz, bob(x, z), if (moving) Stroke.PADDLE else Stroke.REST, moving = moving)
+                    if (ease < 0.02) p0 else steer(p0, angDiff(headAng(hx2, hz2), headAng(hx, hz)) / 0.6, i)
+                }
+                Act.INSHORE -> {
+                    // Close in, just outside the break, playing along the beach: back and forth, in line
+                    val lane = zs + breakDepth + 4.0 + 3.0 * hash(seg.seed + 21) + rank * 1.2
+                    val span = halfAt(lane) * 0.8
+                    val uu = (u - rank * 0.025).coerceIn(0.0, 1.0)
+                    val laps = 1 + (hash(seg.seed + 22) * 2).toInt()
+                    val th = 2 * PI * laps * uu
+                    val inOut = smooth(uu / 0.18) * (1 - smooth((uu - 0.82) / 0.18))
+                    val x = home[members[0]] * (1 - inOut) + inOut * seg.dir * span * sin(th)
+                    val z = zL + (lane - zL) * inOut
+                    val th2 = th + 2 * PI * laps * 0.5 / seg.len
+                    val x2 = home[members[0]] * (1 - inOut) + inOut * seg.dir * span * sin(th2)
+                    val z2 = zL + (lane - zL) * (smooth((uu + 0.5 / seg.len) / 0.18) * (1 - smooth((uu + 0.5 / seg.len - 0.82) / 0.18)))
+                    val (hx, hz) = norm(x2 - x, z2 - z)
+                    val th3 = th2 + 2 * PI * laps * 0.5 / seg.len
+                    val (hx3, hz3) = norm(seg.dir * span * (sin(th3) - sin(th2)) * inOut + 1e-6, 0.0)
+                    steer(settle(i, Pose(x, z, hx, hz, bob(x, z)), 0.2), angDiff(headAng(hx3, hz3), headAng(hx, hz)) / 0.5, i)
+                }
             }
         }
         // Draw furthest first
@@ -2267,9 +2389,43 @@ object SceneArt {
             val riding = (o.stroke == Stroke.RUDDER || o.stroke == Stroke.SPRINT) && o.hz < -0.5 && o.h > 0.3
             val pitch = if (riding) -0.55 * min(o.h, 1.8) else
                 (sw.height(t, o.x + o.hx * KAYAK_L / 2, o.z + o.hz * KAYAK_L / 2) - sw.height(t, o.x - o.hx * KAYAK_L / 2, o.z - o.hz * KAYAK_L / 2)).coerceIn(-1.4, 1.4)
+            // Balance: the upper body stays over the boat as the sea tips it, leaning uphill on a slope,
+            // with small corrections all the time. Now and then it goes wrong: a wobble saved with a
+            // quick low brace, or (in rougher water, less often) over it goes and they roll back up.
+            val nxB = -o.hz; val nzB = o.hx
+            val slope = sw.height(t, o.x + nxB * 0.6, o.z + nzB * 0.6) - sw.height(t, o.x - nxB * 0.6, o.z - nzB * 0.6)
+            var tilt = (-slope * 0.45 + 0.04 * sin(t * 1.9 + i * 2.3) + 0.025 * sin(t * 3.7 + i)).coerceIn(-0.25, 0.25)
+            var stroke = o.stroke; var side = o.side; var roll = o.roll; var foam = o.foam; var moving = o.moving
+            val rough = ((sw.h - 0.3) / 1.2 + (s.windKn - 8.0) / 20.0).coerceIn(0.0, 1.0)
+            val free = o.roll == 0.0 && o.stroke != Stroke.BRACE && !(seg.act == Act.SURF && o.stroke != Stroke.REST && o.stroke != Stroke.PADDLE) &&
+                seg.act != Act.ROLL
+            if (free && rough > 0.05) {
+                val slotLen = 14.0
+                val slot = kotlin.math.floor((t + i * 5.3) / slotLen)
+                val ev = hash(slot.toInt() * 7 + i * 101 + seg.seed)
+                val at = slotLen * 0.15 + slotLen * 0.5 * hash(slot.toInt() * 11 + i)
+                val e = (t + i * 5.3) - slot * slotLen - at
+                val wSide = if (hash(slot.toInt() * 3 + i) < 0.5) -1.0 else 1.0
+                if (ev < 0.03 * rough && e in 0.0..4.2) {
+                    // over and back up: lean, capsize, a moment under, roll up with a sweep
+                    roll = when {
+                        e < 0.5 -> PI * smooth(e / 0.5)
+                        e < 1.8 -> PI
+                        e < 2.9 -> PI * (1 - smooth((e - 1.8) / 1.1))
+                        else -> 0.0
+                    }
+                    stroke = if (e > 1.8) Stroke.BRACE else Stroke.REST; side = wSide; foam = 0.7; moving = false
+                } else if (ev < 0.03 * rough + 0.3 * rough && e in 0.0..1.6) {
+                    // a wobble: tipped one way, saved with a slap of the blade and a flick of the hips
+                    val k = sin(PI * e / 1.6)
+                    tilt = -wSide * 0.35 * k
+                    if (e in 0.25..1.2) { stroke = Stroke.BRACE; side = -wSide; foam = max(foam, 0.4 * k) }
+                }
+            }
+            val st = stroke; val sd = side; val rl = roll; val fm = foam; val mv = moving; val tl2 = tilt
             later(o.x, o.z) {
-                seaKayak(c, v, d, t, o.x, o.z, o.hx, o.hz, o.h, day, o.moving, colour = i, stroke = o.stroke, side = o.side,
-                    foam = o.foam, phase = i * 2.1, roll = o.roll, pitch = pitch)
+                seaKayak(c, v, d, t, o.x, o.z, o.hx, o.hz, o.h, day, mv, colour = i, stroke = st, side = sd,
+                    foam = fm, phase = i * 2.1, roll = rl, pitch = pitch, tilt = tl2)
             }
         }
     }
@@ -2975,86 +3131,80 @@ object SceneArt {
 
     // ---- the rescue helicopter ---------------------------------------------------------
 
-    private const val HELI_IN = 70.0          // flying in
-    private const val HELI_HOVER = 160.0      // hovering over the sea, winch down
-    private const val HELI_OUT = 70.0         // flying away
-    private const val HELI_T = HELI_IN + HELI_HOVER + HELI_OUT
+    private const val HELI_IN = 60.0          // flying in along the coast
+    private const val HELI_OUT = 110.0        // turning away and flying off out to sea, to the horizon
+    private const val HELI_T = HELI_IN + HELI_OUT
 
     private fun heliVisit(s: SceneInput, wall: Double): Long? = s.heliTimes.lastOrNull { wall >= it && wall < it + HELI_T }
 
+    /**
+     * A Sea King: the big boat-hulled search-and-rescue helicopter, white with a red stripe. It comes
+     * in along the coast, turns and flies away out to sea until it's lost over the horizon.
+     */
     private fun heli(c: Canvas, v: View3, d: Float, t: Float, s: SceneInput, zs: Double, sw: Swell, day: Double, wall: Double) {
         val start = heliVisit(s, wall) ?: return
         val e = wall - start
         val r = hash((start / 60).toInt())
-        val dir = if (r < 0.5) 1.0 else -1.0                       // which way it crosses
-        val hz = zs + 60.0 + 70.0 * hash((start / 60).toInt() + 3)
+        val dir = if (r < 0.5) 1.0 else -1.0                       // which way it comes along the coast
+        val z0 = zs + 330.0 + 220.0 * hash((start / 60).toInt() + 3)   // a few hundred metres off the beach
         val half = (v.w / 2.0) / v.f
-        val hx = (r - 0.5) * 0.5 * half * hz                       // where it hovers
-        val (x, z, alt) = when {
-            e < HELI_IN -> {
-                val u = smooth(e / HELI_IN)
-                val sx = hx - dir * (half * (hz + 80) * 1.3 + 40)
-                Triple(sx + (hx - sx) * u, hz + 80 * (1 - u), 70.0 - 40.0 * u)
-            }
-            e < HELI_IN + HELI_HOVER -> {
-                // holding station, drifting a little (eased in and out so it doesn't twitch)
-                val wob = smooth((e - HELI_IN) / 5.0) * smooth((HELI_IN + HELI_HOVER - e) / 5.0)
-                Triple(hx + 1.5 * sin(e * 0.3) * wob, hz, 30.0 + 1.0 * sin(e * 0.7) * wob)
-            }
-            else -> {
-                val u = smooth((e - HELI_IN - HELI_HOVER) / HELI_OUT)
-                val ex = hx + dir * (half * (hz + 120) * 1.3 + 40)
-                Triple(hx + (ex - hx) * u, hz + 120 * u, 30.0 + 50.0 * u)
-            }
+        val mid = (r - 0.5) * 0.4 * half * z0                      // where it turns out to sea
+        val far = 5000.0
+        fun at(ee: Double): Triple<Double, Double, Double> = if (ee < HELI_IN) {
+            val u = ee / HELI_IN
+            val sx = mid - dir * (half * z0 * 1.2 + 60)
+            Triple(sx + (mid - sx) * (u * (2 - u)), z0, 45.0)                   // slowing a little into the turn
+        } else {
+            val u = (ee - HELI_IN) / HELI_OUT
+            val turn = smooth(u * 3)
+            val x = mid + dir * 80.0 * u * turn                                 // still drifting the way it came
+            Triple(x, z0 + (far - z0) * u.pow(1.6) * turn, 45.0 + 90.0 * u)
         }
+        val (x, z, alt) = at(e)
+        val (x2, z2, _) = at(e + 1.0)
         val k = v.size(1.0, z)
+        // Lost in the haze as it goes
+        val fade = (1 - smooth((z - 2500.0) / 2500.0)).toFloat()
+        if (fade <= 0.02 || k < 0.04f) return
         val bx = v.x(x, z); val by = v.y(z, alt)
-        val f = dir.toFloat()
-        val hovering = e >= HELI_IN && e < HELI_IN + HELI_HOVER
-        // Rotor downwash whipping up spray on the sea under it
-        if (alt < 45) {
-            val sea = v.y(z); val wash = (1 - (alt - 25) / 20).coerceIn(0.0, 1.0)
-            val spray = p(alpha(0xFFFFFFFF.toInt(), 0.35 * wash))
-            for (m in 0 until 9) {
-                val a = m / 9.0 * 2 * PI + t * 1.5
-                c.drawCircle(v.x(x + 9 * cos(a), z + 4 * sin(a)), sea - (2f + hash(m).toFloat() * 3f) * k * 0.3f, max(2f * d, k * 1.6f), spray)
-            }
-        }
-        // Winch line with someone on it while hovering
-        if (hovering) {
-            val w = e - HELI_IN
-            val drop = ((if (w < 40) w / 40 else if (w > HELI_HOVER - 40) (HELI_HOVER - w) / 40 else 1.0) * (alt - 1.0)).coerceAtLeast(0.0)
-            val ly = v.y(z, alt - drop)
-            c.drawLine(bx + 1.5f * k * f, by + 1.2f * k, bx + 1.5f * k * f, ly, stroke(shadeDay(0xFF2A2A2A.toInt(), day), max(1f * d, k * 0.06f)))
-            c.drawCircle(bx + 1.5f * k * f, ly + 0.5f * k, max(1.5f * d, k * 0.35f), p(shadeDay(0xFFFF8A00.toInt(), day)))
-        }
-        val red = shadeDay(0xFFD8231F.toInt(), day)
-        val white = shadeDay(0xFFF2F2F2.toInt(), day)
+        val f = if (v.x(x2, z2) >= bx) 1f else -1f                 // facing the way it's moving across the screen
+        fun px(xx: Float) = bx + xx * k * f
+        fun py(yy: Float) = by + yy * k
+        fun poly(col: Int, vararg q: Float): Path { val pa = Path(); pa.moveTo(px(q[0]), py(q[1])); var i = 2
+            while (i < q.size) { pa.lineTo(px(q[i]), py(q[i + 1])); i += 2 }; pa.close(); c.drawPath(pa, p(alpha(col, fade.toDouble()))); return pa }
+        val white = shadeDay(0xFFF4F4F2.toInt(), day)
+        val shade = shadeDay(0xFFC9CDD2.toInt(), day)
+        val red = shadeDay(0xFFD32F2F.toInt(), day)
         val glass = shadeDay(0xFF1E2A38.toInt(), day)
-        // Tail boom and fin
-        c.drawLine(bx - 2f * k * f, by, bx - 10f * k * f, by - 1.2f * k, stroke(red, max(2f * d, k * 0.9f)))
-        c.drawPath(Path().apply { moveTo(bx - 9.3f * k * f, by - 1.0f * k); lineTo(bx - 10.6f * k * f, by - 3.6f * k); lineTo(bx - 11f * k * f, by - 1.1f * k); close() }, p(red))
-        // tail rotor: a spinning disc
-        c.drawCircle(bx - 10.5f * k * f, by - 2.2f * k, max(2f * d, k * 1.4f), p(alpha(0xFF9AA3AD.toInt(), 0.35)))
-        // Body
-        c.drawOval(RectF(bx - 3.5f * k, by - 1.8f * k, bx + 4.5f * k, by + 1.8f * k).also { if (f < 0) { val l = it.left; it.left = 2 * bx - it.right; it.right = 2 * bx - l } }, p(red))
-        c.drawRect(bx - 3f * k, by - 0.1f * k, bx + 3.8f * k * 0 + 3f * k, by + 0.45f * k, p(white))          // white band
-        c.drawOval(RectF(bx + 2.2f * k * f - 1.3f * k, by - 1.4f * k, bx + 2.2f * k * f + 1.3f * k, by - 0.1f * k), p(glass))   // cockpit
-        // Wheels
-        c.drawCircle(bx - 1.5f * k, by + 2.1f * k, max(1.2f * d, k * 0.35f), p(glass))
-        c.drawCircle(bx + 2f * k * f, by + 2.1f * k, max(1.2f * d, k * 0.35f), p(glass))
-        // Main rotor: a blur with a blade or two showing
-        c.drawLine(bx, by - 1.8f * k, bx, by - 2.6f * k, stroke(glass, max(1.5f * d, k * 0.3f)))
-        c.drawOval(RectF(bx - 8.5f * k, by - 2.9f * k, bx + 8.5f * k, by - 2.3f * k), p(alpha(0xFF9AA3AD.toInt(), 0.35)))
-        val bl = (cos(t * 25.0) * 8.5).toFloat() * k
-        c.drawLine(bx - bl, by - 2.6f * k, bx + bl, by - 2.6f * k, stroke(alpha(glass.toInt(), 0.7), max(1.2f * d, k * 0.2f)))
-        // Anti-collision light, and a searchlight on the sea at night
-        if ((t % 1.2f) < 0.15f) c.drawCircle(bx, by - 3f * k, max(2.5f * d, k * 0.6f), p(0xFFFF3B30.toInt()))
-        if (day < 0.5 && hovering) {
-            val sea = v.y(z)
-            c.drawPath(Path().apply { moveTo(bx + 3f * k * f, by + 1f * k); lineTo(bx - 4f * k, sea); lineTo(bx + 10f * k, sea); close() },
-                p(alpha(0xFFFFF6D8.toInt(), 0.18 * (1 - day))))
+        val grey = shadeDay(0xFF5E666F.toInt(), day)
+        // tail rotor disc (far side first), then the tail: a boom sweeping up into a tall fin
+        c.drawCircle(px(-11.6f), py(-4.2f), max(1.2f * d, k * 1.6f), p(alpha(0xFF9AA3AD.toInt(), 0.3 * fade)))
+        poly(white, -4.5f, -2.6f, -10.5f, -2.9f, -12.2f, -5.8f, -11.4f, -5.9f, -10.0f, -3.6f, -4.5f, -1.2f)
+        poly(red, -10.6f, -3.0f, -12.0f, -5.6f, -11.5f, -5.7f, -10.2f, -3.6f)                     // red on the fin
+        // the boat-shaped hull: flat bottom, raised nose, cabin, engine housings on top
+        poly(white, 8.0f, -0.9f, 7.4f, -0.1f, 6.0f, 0f, -3.5f, 0f, -4.8f, -1.1f, -4.6f, -3.0f, 4.6f, -3.2f, 6.4f, -2.7f, 7.8f, -1.7f)
+        poly(shade, 7.4f, -0.1f, 6.0f, 0f, -3.5f, 0f, -4.6f, -0.9f, -3.5f, -0.45f, 6.6f, -0.45f)    // hull bottom in shadow
+        poly(white, -2.2f, -3.0f, -1.6f, -3.9f, 2.4f, -3.9f, 3.2f, -3.1f)                             // engines
+        poly(red, 7.9f, -1.35f, -4.75f, -1.55f, -4.7f, -1.05f, 7.7f, -0.85f)                          // the red stripe
+        poly(glass, 7.6f, -1.75f, 6.3f, -2.65f, 5.3f, -2.75f, 5.3f, -1.85f)                           // cockpit glass
+        for (w in 0 until 4) {                                                                         // cabin windows
+            val wx = 3.6f - w * 1.7f
+            poly(glass, wx, -2.6f, wx - 0.8f, -2.6f, wx - 0.8f, -1.9f, wx, -1.9f)
         }
+        // sponson with the main wheels, and the nose wheel
+        poly(grey, 0.6f, -0.6f, -1.8f, -0.6f, -2.0f, 0.3f, 0.9f, 0.3f)
+        c.drawCircle(px(-0.6f), py(0.55f), max(0.35f * d, k * 0.38f), p(alpha(glass, fade.toDouble())))
+        c.drawCircle(px(5.6f), py(0.35f), max(0.3f * d, k * 0.26f), p(alpha(glass, fade.toDouble())))
+        // rotor head and five-bladed main rotor: a blur with a blade or two catching the light
+        c.drawLine(px(0.3f), py(-3.9f), px(0.3f), py(-4.6f), stroke(alpha(grey, fade.toDouble()), max(1f * d, k * 0.35f)))
+        c.drawOval(RectF(px(0.3f) - 9.5f * k, py(-4.95f), px(0.3f) + 9.5f * k, py(-4.45f)),
+            p(alpha(0xFF9AA3AD.toInt(), 0.3 * fade)))
+        for (m in 0 until 2) {
+            val bl = (cos(t * 22.0 + m * 1.26) * 9.5).toFloat() * k
+            c.drawLine(px(0.3f) - bl, py(-4.7f), px(0.3f) + bl, py(-4.7f), stroke(alpha(grey, 0.6 * fade), max(0.8f * d, k * 0.18f)))
+        }
+        // anti-collision beacon
+        if ((t % 1.2f) < 0.15f) c.drawCircle(px(-1.0f), py(-4.0f), max(1.5f * d, k * 0.5f), p(alpha(0xFFFF3B30.toInt(), fade.toDouble())))
     }
 
     // ---- inshore lifeboat training ------------------------------------------------------
@@ -3282,15 +3432,43 @@ object SceneArt {
         for (i in 0 until n) wetP.lineTo(xsA[i], reach[i])
         wetP.lineTo(v.w, top); wetP.close()
         c.drawPath(wetP, p(alpha(shadeDay(0xFF6E5A3E.toInt(), day), 0.3)))
-        // the thin sheet of water
-        val water = Path(); water.moveTo(0f, top)
-        for (i in 0 until n) water.lineTo(xsA[i], edge[i])
-        water.lineTo(v.w, top); water.close()
-        c.drawPath(water, p(alpha(sheet, 0.85)))
-        val sheen = Path(); sheen.moveTo(0f, top)
-        for (i in 0 until n) sheen.lineTo(xsA[i], top + (edge[i] - top) * 0.55f)
-        sheen.lineTo(v.w, top); sheen.close()
-        c.drawPath(sheen, p(alpha(near, 0.45)))
+        // the thin sheet of water: the sea's own colours carried on down to the edge, the sand
+        // showing through more and more as it thins out
+        val sc = shoreCols
+        val wetSand = shadeDay(0xFF8C7A5E.toInt(), day)
+        if (sc == null) {
+            val water = Path(); water.moveTo(0f, top)
+            for (i in 0 until n) water.lineTo(xsA[i], edge[i])
+            water.lineTo(v.w, top); water.close()
+            c.drawPath(water, p(alpha(sheet, 0.85)))
+        } else {
+            // smoothed along the shore (no blocks where foam comes and goes), blended between columns
+            val sm = IntArray(sc.size) { k ->
+                var rr = 0; var gg = 0; var bb = 0; var nn = 0
+                for (j in max(0, k - 3)..min(sc.size - 1, k + 3)) { val cc = sc[j]; rr += (cc shr 16) and 255; gg += (cc shr 8) and 255; bb += cc and 255; nn++ }
+                (0xFF shl 24) or ((rr / nn) shl 16) or ((gg / nn) shl 8) or (bb / nn)
+            }
+            fun seaAt(xs: Float): Int {
+                val f = (xs / shoreColPx + 1).coerceIn(0f, (sm.size - 1).toFloat())
+                val k = f.toInt().coerceAtMost(sm.size - 2)
+                return mix(sm[k], sm[k + 1], (f - k).toDouble())
+            }
+            val bands = floatArrayOf(0f, 0.45f, 0.75f, 1f)
+            val thin = floatArrayOf(0f, 0.18f, 0.4f)
+            val fill = p(0)
+            for (i in 0 until n - 1) {
+                val x0 = xsA[i]; val x1 = xsA[i + 1] + 0.5f
+                val col = seaAt((x0 + x1) / 2)
+                for (bnd in 0 until 3) {
+                    val q = Path()
+                    val a0 = bands[bnd]; val a1 = bands[bnd + 1]
+                    q.moveTo(x0, top + (edge[i] - top) * a0); q.lineTo(x1, top + (edge[i + 1] - top) * a0)
+                    q.lineTo(x1, top + (edge[i + 1] - top) * a1); q.lineTo(x0, top + (edge[i] - top) * a1); q.close()
+                    fill.color = mix(col, wetSand, thin[bnd].toDouble())
+                    c.drawPath(q, fill)
+                }
+            }
+        }
         // the shore dump: a band of churned white water rushing up the sand with each wave
         if (!flat) run {
             val fp = p(alpha(mix(0xFFDCE6EA.toInt(), 0xFFF6FBFC.toInt(), day), 0.9))

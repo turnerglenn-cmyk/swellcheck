@@ -24,6 +24,8 @@ import android.widget.Toast
 class SettingsActivity : Activity() {
 
     private lateinit var prefs: Prefs
+    /** Saves what's been typed above. Run by Save, and before a theme change reloads this screen. */
+    private var saveEdits: (quiet: Boolean) -> Boolean = { true }
     private lateinit var useGps: RadioButton
     private lateinit var useFixed: RadioButton
     private lateinit var fixedLabel: TextView
@@ -56,9 +58,6 @@ class SettingsActivity : Activity() {
             gravity = Gravity.CENTER; setTextColor(pal.accent)
         }, full())
 
-        // --- Look: colour theme and screen layout (both apply straight away)
-        root.addView(themeCard())
-        root.addView(layoutCard())
 
         // --- Location
         val loc = Ui.card(this)
@@ -143,12 +142,12 @@ class SettingsActivity : Activity() {
         // --- Save
         val save = Ui.button(this, "Save") { }
         root.addView(save, full(top = 18))
-        save.setOnClickListener {
+        saveEdits = save@{ quiet ->
             val wantGps = group.checkedRadioButtonId == useGps.id
             val chosen = pending
             if (!wantGps && chosen == null && prefs.placeName == null) {
-                Toast.makeText(this, "Search for a place first", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
+                if (!quiet) Toast.makeText(this, "Search for a place first", Toast.LENGTH_SHORT).show()
+                return@save false
             }
             if (wantGps) {
                 if (!prefs.useGps) { prefs.lat = null; prefs.lon = null }
@@ -175,8 +174,13 @@ class SettingsActivity : Activity() {
             Rating.windLimits = prefs.limits                 // the surf call uses them straight away too
             prefs.settingsChanged = System.currentTimeMillis()   // the live wallpaper picks this up
             ConditionsWidget.updateAll(applicationContext)
-            finish()
+            true
         }
+        save.setOnClickListener { if (saveEdits(false)) finish() }
+
+        // --- Look: colour theme and screen layout (both apply straight away, so they sit below Save)
+        root.addView(themeCard())
+        root.addView(layoutCard())
 
         // --- About (disclaimer, data credit, privacy)
         val about = Ui.card(this)
@@ -248,6 +252,7 @@ class SettingsActivity : Activity() {
             contentDescription = theme.name + if (selected) ", selected" else ""
             setOnClickListener {
                 if (prefs.theme != theme.id) {
+                    saveEdits(true)                     // keep anything typed above: the screen reloads in the new colours
                     prefs.theme = theme.id
                     ConditionsWidget.updateAll(applicationContext)
                     recreate()
